@@ -32,8 +32,7 @@ import shutil
 
 
 # for postgresql database******************************************************************************************************************** 
-
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:yash%403375@localhost:5433/Kids_chatbot_db"
+SQLALCHEMY_DATABASE_URL = "sqlite:///./kidschatbot.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -3491,7 +3490,7 @@ def generate_puzzle(level: int):
     correct_answer = eval(eval_expr)
     return expr, fruit_values, correct_answer
 
-@app.get("/welcome/{child_id}", tags=["BRAINY FRUITS"])
+@app.get("kids/v1/welcome/{child_id}", tags=["BRAINY FRUITS"])
 def welcome_player_spell(child_id: int, db: Session = Depends(get_db)):
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
     if not child:
@@ -3533,7 +3532,7 @@ def welcome_player_spell(child_id: int, db: Session = Depends(get_db)):
 
 # START ENDPOINT : *****************************************************************************************************************************
 """Ab ye endpoint ekdum perfect hai isme kya kiya sir maine agar hamne 4 levels complete kr chuki hai to automatically 5th levels se game resume ho jayega"""
-@app.get("/game/start", response_model=GameStateResponse, tags=["BRAINY FRUITS"])
+@app.get("/kids/v1/game/start", response_model=GameStateResponse, tags=["BRAINY FRUITS"])
 def start_game(
     # session_id: str = None,
     child_id: int = None,
@@ -3641,7 +3640,7 @@ def start_game(
 
 
 # SELECT LEVEL ENDPOINT : ******************************************************************************************************************
-@app.get("/game/select_level/{child_id}", tags=["BRAINY FRUITS"])
+@app.get("/kids/v1/game/select_level/{child_id}", tags=["BRAINY FRUITS"])
 def select_level(child_id: int, desired_level: int = Query(None, description="Level you want to play"), db: Session = Depends(get_db)):
     """
     Fetch user's unlocked levels and allow selecting any unlocked level.
@@ -3702,7 +3701,7 @@ def select_level(child_id: int, desired_level: int = Query(None, description="Le
 
 # 08/11/2025*****************************************************************************submit22:21
 # SUBMIT ANSWER ENDPOINT : ************************************************************************************************************
-@app.post("/game/submit_answer/{child_id}", response_model=GameStateResponse, tags=["BRAINY FRUITS"])
+@app.post("/kids/v1/game/submit_answer/{child_id}", response_model=GameStateResponse, tags=["BRAINY FRUITS"])
 def submit_answer(request: AnswerRequest, child_id: int, db: Session = Depends(get_db)):
     session = GAME_SESSIONS.get(request.session_id)
     if not session:
@@ -3911,7 +3910,7 @@ def submit_answer(request: AnswerRequest, child_id: int, db: Session = Depends(g
 
 
 # GAME PROGRESS ENDPOINT **************************************************************************************************************
-@app.get("/game/progress/{child_id}", tags=["BRAINY FRUITS"])
+@app.get("kids/v1/game/progress/{child_id}", tags=["BRAINY FRUITS"])
 def get_game_progress(child_id: int, db: Session = Depends(get_db)):
 
     progress_records = db.query(GameProgress).filter(GameProgress.child_id == child_id).all()
@@ -3993,7 +3992,7 @@ def get_game_progress(child_id: int, db: Session = Depends(get_db)):
 
 # GAME REPLAY ENDPOINT******************************************************************************************************************
 # Replay endpoint latest 06-11-2025 New
-@app.get("/game/replay_level/{child_id}", tags=["BRAINY FRUITS"])
+@app.get("kids/v1/game/replay_level/{child_id}", tags=["BRAINY FRUITS"])
 def replay_last_played_level(child_id: int, db: Session = Depends(get_db)):
     """
     Replay the last played level automatically.
@@ -4072,7 +4071,7 @@ def replay_last_played_level(child_id: int, db: Session = Depends(get_db)):
 
 # New Logic : Next_Endpoint*****************************************06/11/2025***************************************************************
 # NEXT LEVEL ENDPOINT : *********************************************************************************************************
-@app.get("/game/next_level/{child_id}", tags=["BRAINY FRUITS"])
+@app.get("kids/v1/game/next_level/{child_id}", tags=["BRAINY FRUITS"])
 def next_level(child_id: int, db: Session = Depends(get_db)):
     completed_levels = (
         db.query(GameProgress.level)
@@ -4420,7 +4419,7 @@ class SubmitAnswerResponse(BaseModel):
     puzzle_expression: Optional[str] = None
     options: Optional[Dict[str, str]] = None
 
-@app.get("/welcome/spell/{child_id}", tags=["SPELL BREAKER"])
+@app.get("kids/v1/welcome/spell/{child_id}", tags=["SPELL BREAKER"])
 def welcome_player_spell(child_id: int, db: Session = Depends(get_db)):
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
     if not child:
@@ -4460,7 +4459,7 @@ def welcome_player_spell(child_id: int, db: Session = Depends(get_db)):
     }
 
 # STATRT ENDPOINT : ******************************************************************************************************************
-@app.get("/game/start/spell", response_model=StartGameResponse, tags=["SPELL BREAKER"])
+@app.get("kids/v1/game/start/spell", response_model=StartGameResponse, tags=["SPELL BREAKER"])
 def start_game(
     # session_id: Optional[str] = None,
     child_id: Optional[int] = None,
@@ -4560,7 +4559,7 @@ def start_game(
     )
 
 # GAME SELECT LEVEL ENDPOINT*****************************************************************************************************
-@app.get("/game/select_level/spell/{child_id}", tags=["SPELL BREAKER"])
+@app.get("kids/v1/game/select_level/spell/{child_id}", tags=["SPELL BREAKER"])
 def select_level(
     child_id: int,
     db: Session = Depends(get_db),
@@ -4635,7 +4634,7 @@ def select_level(
 
 
 # SUBMIT ANSWER ENDPOINT*************************************************************************************************************
-@app.post("/game/submit_answer/spell/{child_id}", response_model=SubmitAnswerResponse, tags=["SPELL BREAKER"])
+@app.post("kids/v1/game/submit_answer/spell/{child_id}", response_model=SubmitAnswerResponse, tags=["SPELL BREAKER"])
 def submit_answer(req: SubmitAnswerRequest, child_id : int, db: Session = Depends(get_db)):
     session = GAME_SESSIONS.get(req.session_id)
     if not session:
@@ -4937,7 +4936,7 @@ def submit_answer(req: SubmitAnswerRequest, child_id : int, db: Session = Depend
 
 
 # GAME PROGRESS ENDPOINT **************************************************************************************************************
-@app.get("/game/progress/spell/{child_id}", tags=["SPELL BREAKER"])
+@app.get("kids/v1/game/progress/spell/{child_id}", tags=["SPELL BREAKER"])
 def get_spellbreaker_progress(child_id: int, db: Session = Depends(get_db)):
     progress_records = db.query(GameProgress_SPELL).filter(GameProgress_SPELL.child_id == child_id).all()
     if not progress_records:
@@ -5009,7 +5008,7 @@ def get_spellbreaker_progress(child_id: int, db: Session = Depends(get_db)):
 
 
 # FIXED REPLAY ENDPOINT *************************************************************************************************************
-@app.get("/game/replay_level/spell/{child_id}", tags=["SPELL BREAKER"])
+@app.get("kids/v1/game/replay_level/spell/{child_id}", tags=["SPELL BREAKER"])
 def replay_last_completed_level_spell(child_id: int, db: Session = Depends(get_db)):
     """
     Replay the last completed OR recently failed level automatically for SPELL BREAKER game.
@@ -5102,7 +5101,7 @@ def replay_last_completed_level_spell(child_id: int, db: Session = Depends(get_d
     }
 
 # NEXT LEVEL ENDPOINT : *********************************************************************************************************
-@app.get("/game/next_level/spell/{child_id}", tags=["SPELL BREAKER"])
+@app.get("kids/v1/game/next_level/spell/{child_id}", tags=["SPELL BREAKER"])
 def next_level_spell(child_id: int, db: Session = Depends(get_db)):
     """
     Move the child to the next unlocked level automatically after completing the previous one.
