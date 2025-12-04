@@ -227,44 +227,46 @@ def generate_otp():
 
 def send_otp_email(to_email, otp, purpose="signup", resend=False):
     print(f"OTP for {to_email}: {otp}")
+
     if not email_host or not email_user or not email_pass:
         print("Email credentials not set")
         return False
-    else:
-        msg = email.message.EmailMessage()
+
+    msg = email.message.EmailMessage()
+
     if purpose == "signup":
-        subject = 'OTP for Kids Chatbot Signup'
-        if resend:
-            content = f"Your OTP for signup (resent) is: {otp}"
-        else:
-            content = f"Your OTP for signup is: {otp}"
+        subject = "OTP for Kids Chatbot Signup"
+        content = f"Your OTP for signup {'(resent)' if resend else ''} is: {otp}"
     elif purpose == "forgot_parent":
-        subject = 'OTP for Parent Password Reset'
+        subject = "OTP for Parent Password Reset"
         content = f"Your OTP for resetting your parent password is: {otp}"
     elif purpose == "forgot_child":
-        subject = 'OTP for Child Password Reset'
+        subject = "OTP for Child Password Reset"
         content = f"Your OTP for resetting your child's password is: {otp}"
     else:
-        subject = 'OTP'
+        subject = "OTP"
         content = f"Your OTP is: {otp}"
+
     msg.set_content(content)
-    msg['Subject'] = subject
-    msg['From'] = email_from or email_user
-    msg['To'] = to_email
+    msg["Subject"] = subject
+    msg["From"] = email_from or email_user
+    msg["To"] = to_email
+
     try:
-        if email_use_ssl:
-            server = smtplib.SMTP_SSL(email_host, email_port)
-        else:
-            server = smtplib.SMTP(email_host, email_port)
-            if email_use_tls:
-                server.starttls()
+        # Use TLS port 587 (AWS supports this)
+        server = smtplib.SMTP(email_host, email_port)
+        if email_use_tls:
+            server.starttls()
+
         server.login(email_user, email_pass)
         server.send_message(msg)
         server.quit()
+
         return True
     except Exception as e:
-        print(f"Error sending email: {e}")
+        print("SMTP ERROR:", type(e), e)
         return False
+
 
 def send_block_notification_email(to_email, child_name, abusive_messages=None):
     if not email_host or not email_user or not email_pass:
