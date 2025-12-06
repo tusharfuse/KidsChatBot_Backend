@@ -695,7 +695,7 @@ class ParentLoginRequest(BaseModel):
 
 
 # already login logic*******************************************************************
-@app.post("/kids/v2/child-login", tags=["Authentication"])
+@app.post("/kids/v1/child-login", tags=["Authentication"])
 async def child_login(request: ChildLoginRequest, db: Session = Depends(get_db)):
     """
     Child login with username and password
@@ -723,7 +723,7 @@ async def child_login(request: ChildLoginRequest, db: Session = Depends(get_db))
         "parent_id": child.parent_id
     }
 
-@app.post("/kids/v2/parent-login",tags=["Authentication"])
+@app.post("/kids/v1/parent-login",tags=["Authentication"])
 async def parent_login(request: ParentLoginRequest, db: Session = Depends(get_db)):
     """
     Parent login with email and password
@@ -746,7 +746,7 @@ async def parent_login(request: ParentLoginRequest, db: Session = Depends(get_db
         "children": children_info
     }
 
-@app.post("/kids/v2/change-child-password",tags=["Authentication"])
+@app.post("/kids/v1/change-child-password",tags=["Authentication"])
 async def change_child_password(request: ChangeChildPasswordRequest, db: Session = Depends(get_db)):
     """
     Change child's password after verifying current password
@@ -763,7 +763,7 @@ async def change_child_password(request: ChangeChildPasswordRequest, db: Session
     db.commit()
     return {"message": "Child password changed successfully"}
 
-@app.post("/kids/v2/change-parent-password",tags=["Authentication"])
+@app.post("/kids/v1/change-parent-password",tags=["Authentication"])
 async def change_parent_password(request: ChangeParentPasswordRequest, db: Session = Depends(get_db)):
     """
     Change parent's password after verifying current password
@@ -780,7 +780,7 @@ async def change_parent_password(request: ChangeParentPasswordRequest, db: Sessi
     db.commit()
     return {"message": "Parent password changed successfully"}
 
-@app.post("/kids/v2/forgot-password-parent",tags=["Authentication"])
+@app.post("/kids/v1/forgot-password-parent",tags=["Authentication"])
 async def forgot_password_parent(request: ForgotPasswordParentRequest, db: Session = Depends(get_db)):
     """
     Send OTP to parent's email for password reset
@@ -795,7 +795,7 @@ async def forgot_password_parent(request: ForgotPasswordParentRequest, db: Sessi
     else:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
 
-@app.post("/kids/v2/forgot-password-child",tags=["Authentication"])
+@app.post("/kids/v1/forgot-password-child",tags=["Authentication"])
 async def forgot_password_child(request: ForgotPasswordChildRequest, db: Session = Depends(get_db)):
     """
     Send OTP to parent's email for child's password reset
@@ -813,7 +813,7 @@ async def forgot_password_child(request: ForgotPasswordChildRequest, db: Session
     else:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
 
-@app.post("/kids/v2/verify-forgot-password",tags=["Authentication"])
+@app.post("/kids/v1/verify-forgot-password",tags=["Authentication"])
 async def verify_forgot_password(request: VerifyForgotPasswordRequest, db: Session = Depends(get_db)):
     """
     Verify OTP and reset password
@@ -1372,7 +1372,7 @@ def send_good_chat_email(to_email: str, child_name: str, good_chats: int):
         print(f"Error sending good chat email: {e}")
         return False
 
-@app.post("/kids/v2/initiate-signup",tags=["signup"])
+@app.post("/kids/v1/initiate-signup",tags=["signup"])
 async def initiate_signup(request: SignupRequest):
     """
     Store signup data and send OTP to parent email
@@ -1411,7 +1411,7 @@ async def initiate_signup(request: SignupRequest):
     else:
         raise HTTPException(status_code=500, detail="Failed to send OTP")
 
-@app.post("/kids/v2/resend-otp", tags = ["signup"])
+@app.post("/kids/v1/resend-otp", tags = ["signup"])
 async def resend_otp(request: ResendOtpRequest, db: Session = Depends(get_db)):
     """
     Resend OTP to the email if signup data exists
@@ -1447,7 +1447,7 @@ async def resend_otp(request: ResendOtpRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to resend OTP")
 
 
-@app.post("/kids/v2/complete-signup", response_model=SignupResponse, tags = ["signup"])
+@app.post("/kids/v1/complete-signup", response_model=SignupResponse, tags = ["signup"])
 async def complete_signup(request: CompleteSignupRequest, db: Session = Depends(get_db)):
     """
     Verify OTP and complete signup
@@ -1634,7 +1634,7 @@ async def complete_signup(request: CompleteSignupRequest, db: Session = Depends(
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
     
 
-# @app.get("/kids/v2/profile")
+# @app.get("/kids/v1/profile")
 # async def get_profile(child_id: int, db: Session = Depends(get_db)):
 #     """Get child profile information for editing"""
 #     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
@@ -1667,7 +1667,7 @@ async def complete_signup(request: CompleteSignupRequest, db: Session = Depends(
 #         "created_at": child.created_at.isoformat() if child.created_at else None
 #     }
 
-@app.get("/kids/v2/parents/{parent_id}", tags=["Parent"])
+@app.get("/kids/v1/parents/{parent_id}", tags=["Parent"])
 async def get_parent(parent_id: int, db: Session = Depends(get_db)):
     """Get parent information by ID"""
     parent = db.query(ParentDB).filter(ParentDB.id == parent_id).first()
@@ -1688,7 +1688,7 @@ class GenerateStoryRequest(BaseModel):
 
 import logging  # Add this import at the top if not already present
 
-@app.post("/kids/v2/generate-story", tags=["Functionalities"])
+@app.post("/kids/v1/generate-story", tags=["Functionalities"])
 async def generate_story_endpoint(request: GenerateStoryRequest, db: Session = Depends(get_db)):
 
     child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
@@ -1750,7 +1750,7 @@ async def generate_story_endpoint(request: GenerateStoryRequest, db: Session = D
 class GenerateJokeRequest(BaseModel):
     child_id: int
 
-@app.post("/kids/v2/generate-joke", tags=["Functionalities"])
+@app.post("/kids/v1/generate-joke", tags=["Functionalities"])
 async def generate_joke_endpoint(request: GenerateJokeRequest, db: Session = Depends(get_db)):
 
     child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
@@ -1814,7 +1814,7 @@ class GenerateQuizRequest(BaseModel):
 
 from datetime import datetime, timedelta
 
-@app.post("/kids/v2/generate-question",tags=["Functionalities"])
+@app.post("/kids/v1/generate-question",tags=["Functionalities"])
 async def generate_question_endpoint(request: GenerateQuestionRequest, db: Session = Depends(get_db)):
     """Generate a new question for the child or return existing if within 24 hours """
     child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
@@ -1864,7 +1864,7 @@ async def generate_question_endpoint(request: GenerateQuestionRequest, db: Sessi
 
 
 
-@app.post("/kids/v2/generate-quiz", tags=["Functionalities"])
+@app.post("/kids/v1/generate-quiz", tags=["Functionalities"])
 async def generate_quiz_endpoint(request: GenerateQuizRequest, db: Session = Depends(get_db)):
     """Generate a new quiz question (non-repeating) OR return the existing unanswered quiz."""
 
@@ -1950,7 +1950,7 @@ class SubmitQuestionAnswerRequest(BaseModel):
 
 
 # NEW : **************************************07/11***************************************************************************
-@app.post("/kids/v2/submit-question-answer", tags=["Functionalities"])
+@app.post("/kids/v1/submit-question-answer", tags=["Functionalities"])
 async def submit_question_answer(request: SubmitQuestionAnswerRequest, db: Session = Depends(get_db)):
     """Submit a question answer and update credits if correct on first attempt, apply daily credit limits."""
     
@@ -2077,7 +2077,7 @@ def get_explanation_for_answer(is_correct: bool, age_slab: str, correct_answer: 
         }
         return explanations.get(age_slab, f"The correct answer is {correct_answer}. Keep learning!")
 
-@app.post("/kids/v2/submit-quiz-answer", tags=["Functionalities"])
+@app.post("/kids/v1/submit-quiz-answer", tags=["Functionalities"])
 async def submit_quiz_answer(request: SubmitQuizAnswerRequest, db: Session = Depends(get_db)):
     """Submit a quiz answer with updated rules:
        - First 5 quizzes of the day → 0 or 1 credit
@@ -2172,7 +2172,7 @@ async def submit_quiz_answer(request: SubmitQuizAnswerRequest, db: Session = Dep
         "total_credits": child.total_credits
     }
 
-@app.get("/kids/v2/child-profile/{child_id}", tags=["Dashboard"])
+@app.get("/kids/v1/child-profile/{child_id}", tags=["Dashboard"])
 async def get_child_profile(child_id: int, db: Session = Depends(get_db)):
     """Get child's profile including credits, chat earned/lost stats, and last generation timestamps"""
     
@@ -2221,7 +2221,7 @@ async def get_child_profile(child_id: int, db: Session = Depends(get_db)):
         "created_at": child.created_at.isoformat() if child.created_at else None
     }
 
-@app.post("/kids/v2/chat", tags=["Chat Functionalities"])
+@app.post("/kids/v1/chat", tags=["Chat Functionalities"])
 async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
     """Handle chat messages with moderation, credits and parental notifications."""
     MAX_WARNINGS = 5          # after 5th warning → block
@@ -2410,7 +2410,7 @@ async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
     }
 
 
-@app.post("/kids/v2/chat-with-audio", tags=["Chat Functionalities"])
+@app.post("/kids/v1/chat-with-audio", tags=["Chat Functionalities"])
 async def chat_with_audio_endpoint(request: ChatWithAudioRequest, db: Session = Depends(get_db)):
     """Chat with moderation, credits, blocking, audio generation, and parent notifications"""
 
@@ -2562,7 +2562,7 @@ async def chat_with_audio_endpoint(request: ChatWithAudioRequest, db: Session = 
     }
 
 
-@app.get("/kids/v2/generate-chat-audio",tags=["Chat Functionalities"])
+@app.get("/kids/v1/generate-chat-audio",tags=["Chat Functionalities"])
 async def generate_chat_audio(child_id: int, message_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Generate and store audio clip for the most recent bot chat response"""
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
@@ -2628,7 +2628,7 @@ async def generate_chat_audio(child_id: int, message_id: Optional[int] = None, d
 class STTRequest(BaseModel):
     audio_base64: str
 
-@app.post("/kids/v2/speech-to-text",tags=["Chat Functionalities"]  )
+@app.post("/kids/v1/speech-to-text",tags=["Chat Functionalities"]  )
 async def speech_to_text(request: STTRequest):
     try:
         audio_bytes = base64.b64decode(request.audio_base64)
@@ -2672,7 +2672,7 @@ async def speech_to_text(request: STTRequest):
 
 
 
-@app.post("/kids/v2/speech-to-speech", tags=["Chat Functionalities"])
+@app.post("/kids/v1/speech-to-speech", tags=["Chat Functionalities"])
 async def speech_to_speech_endpoint(request: SpeechToSpeechRequest, db: Session = Depends(get_db)):
     """Speech-to-speech with transcription, moderation, good/bad chat credits, blocking, email alerts, and audio TTS"""
 
@@ -2857,7 +2857,7 @@ async def speech_to_speech_endpoint(request: SpeechToSpeechRequest, db: Session 
     }
 
 # NEW ENDPOINT UNBLOCK*********************************************************************************************
-@app.post("/kids/v2/unblock-child", tags=["Block & Unblock"])
+@app.post("/kids/v1/unblock-child", tags=["Block & Unblock"])
 async def unblock_child(request: UnblockChildRequest, db: Session = Depends(get_db)):
     """Allow parents to unblock their child"""
     parent = db.query(ParentDB).filter(ParentDB.id == request.parent_id).first()
@@ -2883,7 +2883,7 @@ async def unblock_child(request: UnblockChildRequest, db: Session = Depends(get_
     return {"message": "Child unblocked successfully"}
 
 #NEW ENDPOINT BLOCK************************07/11/25*******************************************************************
-@app.post("/kids/v2/block-child", tags=["Block & Unblock"])
+@app.post("/kids/v1/block-child", tags=["Block & Unblock"])
 async def block_child(request: UnblockChildRequest, db: Session = Depends(get_db)):
     """Allow parents to block their child"""
     parent = db.query(ParentDB).filter(ParentDB.id == request.parent_id).first()
@@ -2913,7 +2913,7 @@ async def block_child(request: UnblockChildRequest, db: Session = Depends(get_db
 import os
 from pathlib import Path
 
-@app.post("/kids/v2/set-avatar",tags=["Avatar Management"])
+@app.post("/kids/v1/set-avatar",tags=["Avatar Management"])
 async def set_avatar(request: SetAvatarRequest, db: Session = Depends(get_db)):
     """Set or update avatar for the child based on selected career, validating it is in dream careers, and rearrange careers to make selected the default. Fetches existing avatar from folder."""
     child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
@@ -2956,11 +2956,11 @@ async def set_avatar(request: SetAvatarRequest, db: Session = Depends(get_db)):
     child.avatar = avatar
     db.commit()
 
-    return {"message": "Avatar set successfully", "avatar": avatar, "avatar_url": f"/kids/v2/avatar/{child.id}", "avatar_folder": child_folder}
+    return {"message": "Avatar set successfully", "avatar": avatar, "avatar_url": f"/kids/v1/avatar/{child.id}", "avatar_folder": child_folder}
 
 
 
-@app.post("/kids/v2/switch-career",tags=["Avatar Management"])
+@app.post("/kids/v1/switch-career",tags=["Avatar Management"])
 async def switch_career(request: SwitchCareerRequest, db: Session = Depends(get_db)):
     """Switch the child's career, rearranging dream careers to make selected the default, and fetch existing avatar"""
     child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
@@ -3010,10 +3010,10 @@ async def switch_career(request: SwitchCareerRequest, db: Session = Depends(get_
     child.avatar = avatar
     db.commit()
 
-    return {"message": "Career switched successfully", "avatar": avatar, "avatar_url": f"/kids/v2/avatar/{child.id}", "avatar_folder": child_folder}
+    return {"message": "Career switched successfully", "avatar": avatar, "avatar_url": f"/kids/v1/avatar/{child.id}", "avatar_folder": child_folder}
 
 
-@app.post("/kids/v2/edit-profile",tags=["Profile Management"])
+@app.post("/kids/v1/edit-profile",tags=["Profile Management"])
 async def edit_profile(request: EditProfileRequest, db: Session = Depends(get_db)):
     """Edit the child's profile, allowing updates to various fields and career switching"""
     child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
@@ -3124,7 +3124,7 @@ async def edit_profile(request: EditProfileRequest, db: Session = Depends(get_db
 import os
 from fastapi.responses import FileResponse
 
-@app.get("/kids/v2/avatar/{child_id}", tags=["Avatar Management"])
+@app.get("/kids/v1/avatar/{child_id}", tags=["Avatar Management"])
 async def get_avatar(child_id: int, db: Session = Depends(get_db)):
     """Serve the avatar image for the child"""
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
@@ -3144,7 +3144,7 @@ async def get_avatar(child_id: int, db: Session = Depends(get_db)):
     return FileResponse(avatar_path, media_type='image/png', filename=filename)
 
 
-@app.get("/kids/v2/chat-history/{parent_id}/{child_id}",tags=["Chat Functionalities"])
+@app.get("/kids/v1/chat-history/{parent_id}/{child_id}",tags=["Chat Functionalities"])
 async def get_chat_history(parent_id: int, child_id: int, date: Optional[str] = None, db: Session = Depends(get_db)):
     """Get chat history for a child, accessible only by the associated parent, grouped by date"""
     parent = db.query(ParentDB).filter(ParentDB.id == parent_id).first()
@@ -3192,7 +3192,7 @@ async def get_chat_history(parent_id: int, child_id: int, date: Optional[str] = 
         "chat_history": chat_history
     }
 
-@app.get("/kids/v2/credit-history/{parent_id}/{child_id}",tags=["Credit Management"])
+@app.get("/kids/v1/credit-history/{parent_id}/{child_id}",tags=["Credit Management"])
 async def get_credit_history(parent_id: int, child_id: int, db: Session = Depends(get_db)):
     """Get credit history for a child, accessible only by the associated parent"""
     parent = db.query(ParentDB).filter(ParentDB.id == parent_id).first()
@@ -3222,7 +3222,7 @@ async def get_credit_history(parent_id: int, child_id: int, db: Session = Depend
         "credit_history": history_data
     }
 
-@app.post("/kids/v2/set-reminder",tags=["Reminders"])
+@app.post("/kids/v1/set-reminder",tags=["Reminders"])
 async def set_reminder(request: SetReminderRequest, db: Session = Depends(get_db)):
     """Set a reminder for the child"""
     child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
@@ -3248,7 +3248,7 @@ async def set_reminder(request: SetReminderRequest, db: Session = Depends(get_db
 
     return {"message": "Reminder set successfully", "reminder_id": reminder.id}
 
-@app.get("/kids/v2/reminders/{child_id}",tags=["Reminders"])
+@app.get("/kids/v1/reminders/{child_id}",tags=["Reminders"])
 async def get_reminders(child_id: int, db: Session = Depends(get_db)):
     """Get all reminders for the child"""
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
@@ -3267,7 +3267,7 @@ async def get_reminders(child_id: int, db: Session = Depends(get_db)):
 
     return {"reminders": reminders_data}
 
-@app.put("/kids/v2/reminder/{reminder_id}",tags=["Reminders"])
+@app.put("/kids/v1/reminder/{reminder_id}",tags=["Reminders"])
 async def update_reminder(reminder_id: int, request: SetReminderRequest, db: Session = Depends(get_db)):
     """Update a reminder for the child"""
     reminder = db.query(ReminderDB).filter(ReminderDB.id == reminder_id).first()
@@ -3291,7 +3291,7 @@ async def update_reminder(reminder_id: int, request: SetReminderRequest, db: Ses
 
     return {"message": "Reminder updated successfully"}
 
-@app.delete("/kids/v2/reminder/{reminder_id}",tags=["Reminders"])
+@app.delete("/kids/v1/reminder/{reminder_id}",tags=["Reminders"])
 async def delete_reminder(reminder_id: int, child_id: int, db: Session = Depends(get_db)):
     """Delete a reminder for the child"""
     reminder = db.query(ReminderDB).filter(ReminderDB.id == reminder_id).first()
@@ -3306,7 +3306,7 @@ async def delete_reminder(reminder_id: int, child_id: int, db: Session = Depends
 
     return {"message": "Reminder deleted successfully"}
 
-@app.put("/kids/v2/reminder/{reminder_id}/notify",tags=["Reminders"])
+@app.put("/kids/v1/reminder/{reminder_id}/notify",tags=["Reminders"])
 async def notify_reminder(reminder_id: int, db: Session = Depends(get_db)):
     """Mark a reminder as notified"""
     reminder = db.query(ReminderDB).filter(ReminderDB.id == reminder_id).first()
@@ -3318,7 +3318,7 @@ async def notify_reminder(reminder_id: int, db: Session = Depends(get_db)):
 
     return {"message": "Reminder marked as notified"}
 
-@app.get("/kids/v2/parent-dashboard/{parent_id}",tags=["Dashboard"])
+@app.get("/kids/v1/parent-dashboard/{parent_id}",tags=["Dashboard"])
 async def get_parent_dashboard(parent_id: int, db: Session = Depends(get_db)):
     """Get parent dashboard with aggregated child information, credits, chat history, and flagged messages"""
     parent = db.query(ParentDB).filter(ParentDB.id == parent_id).first()
@@ -3539,7 +3539,7 @@ def generate_puzzle(level: int):
     correct_answer = eval(eval_expr)
     return expr, fruit_values, correct_answer
 
-@app.get("/kids/v2/welcome/{child_id}", tags=["BRAINY FRUITS"])
+@app.get("/kids/v1/welcome/{child_id}", tags=["BRAINY FRUITS"])
 def welcome_player_spell(child_id: int, db: Session = Depends(get_db)):
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
     if not child:
@@ -3581,7 +3581,7 @@ def welcome_player_spell(child_id: int, db: Session = Depends(get_db)):
 
 # START ENDPOINT : *****************************************************************************************************************************
 """Ab ye endpoint ekdum perfect hai isme kya kiya sir maine agar hamne 4 levels complete kr chuki hai to automatically 5th levels se game resume ho jayega"""
-@app.get("/kids/v2/game/start", response_model=GameStateResponse, tags=["BRAINY FRUITS"])
+@app.get("/kids/v1/game/start", response_model=GameStateResponse, tags=["BRAINY FRUITS"])
 def start_game(
     # session_id: str = None,
     child_id: int = None,
@@ -3689,7 +3689,7 @@ def start_game(
 
 
 # SELECT LEVEL ENDPOINT : ******************************************************************************************************************
-@app.get("/kids/v2/game/select_level/{child_id}", tags=["BRAINY FRUITS"])
+@app.get("/kids/v1/game/select_level/{child_id}", tags=["BRAINY FRUITS"])
 def select_level(child_id: int, desired_level: int = Query(None, description="Level you want to play"), db: Session = Depends(get_db)):
     """
     Fetch user's unlocked levels and allow selecting any unlocked level.
@@ -3750,7 +3750,7 @@ def select_level(child_id: int, desired_level: int = Query(None, description="Le
 
 # 08/11/2025*****************************************************************************submit22:21
 # SUBMIT ANSWER ENDPOINT : ************************************************************************************************************
-@app.post("/kids/v2/game/submit_answer/{child_id}", response_model=GameStateResponse, tags=["BRAINY FRUITS"])
+@app.post("/kids/v1/game/submit_answer/{child_id}", response_model=GameStateResponse, tags=["BRAINY FRUITS"])
 def submit_answer(request: AnswerRequest, child_id: int, db: Session = Depends(get_db)):
     session = GAME_SESSIONS.get(request.session_id)
     if not session:
@@ -3959,7 +3959,7 @@ def submit_answer(request: AnswerRequest, child_id: int, db: Session = Depends(g
 
 
 # GAME PROGRESS ENDPOINT **************************************************************************************************************
-@app.get("/kids/v2/game/progress/{child_id}", tags=["BRAINY FRUITS"])
+@app.get("/kids/v1/game/progress/{child_id}", tags=["BRAINY FRUITS"])
 def get_game_progress(child_id: int, db: Session = Depends(get_db)):
 
     progress_records = db.query(GameProgress).filter(GameProgress.child_id == child_id).all()
@@ -4041,7 +4041,7 @@ def get_game_progress(child_id: int, db: Session = Depends(get_db)):
 
 # GAME REPLAY ENDPOINT******************************************************************************************************************
 # Replay endpoint latest 06-11-2025 New
-@app.get("/kids/v2/game/replay_level/{child_id}", tags=["BRAINY FRUITS"])
+@app.get("/kids/v1/game/replay_level/{child_id}", tags=["BRAINY FRUITS"])
 def replay_last_played_level(child_id: int, db: Session = Depends(get_db)):
     """
     Replay the last played level automatically.
@@ -4120,7 +4120,7 @@ def replay_last_played_level(child_id: int, db: Session = Depends(get_db)):
 
 # New Logic : Next_Endpoint*****************************************06/11/2025***************************************************************
 # NEXT LEVEL ENDPOINT : *********************************************************************************************************
-@app.get("/kids/v2/game/next_level/{child_id}", tags=["BRAINY FRUITS"])
+@app.get("/kids/v1/game/next_level/{child_id}", tags=["BRAINY FRUITS"])
 def next_level(child_id: int, db: Session = Depends(get_db)):
     completed_levels = (
         db.query(GameProgress.level)
@@ -4468,7 +4468,7 @@ class SubmitAnswerResponse(BaseModel):
     puzzle_expression: Optional[str] = None
     options: Optional[Dict[str, str]] = None
 
-@app.get("/kids/v2/welcome/spell/{child_id}", tags=["SPELL BREAKER"])
+@app.get("/kids/v1/welcome/spell/{child_id}", tags=["SPELL BREAKER"])
 def welcome_player_spell(child_id: int, db: Session = Depends(get_db)):
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
     if not child:
@@ -4508,7 +4508,7 @@ def welcome_player_spell(child_id: int, db: Session = Depends(get_db)):
     }
 
 # STATRT ENDPOINT : ******************************************************************************************************************
-@app.get("/kids/v2/game/start/spell", response_model=StartGameResponse, tags=["SPELL BREAKER"])
+@app.get("/kids/v1/game/start/spell", response_model=StartGameResponse, tags=["SPELL BREAKER"])
 def start_game(
     # session_id: Optional[str] = None,
     child_id: Optional[int] = None,
@@ -4608,7 +4608,7 @@ def start_game(
     )
 
 # GAME SELECT LEVEL ENDPOINT*****************************************************************************************************
-@app.get("/kids/v2/game/select_level/spell/{child_id}", tags=["SPELL BREAKER"])
+@app.get("/kids/v1/game/select_level/spell/{child_id}", tags=["SPELL BREAKER"])
 def select_level(
     child_id: int,
     db: Session = Depends(get_db),
@@ -4683,7 +4683,7 @@ def select_level(
 
 
 # SUBMIT ANSWER ENDPOINT*************************************************************************************************************
-@app.post("/kids/v2/game/submit_answer/spell/{child_id}", response_model=SubmitAnswerResponse, tags=["SPELL BREAKER"])
+@app.post("/kids/v1/game/submit_answer/spell/{child_id}", response_model=SubmitAnswerResponse, tags=["SPELL BREAKER"])
 def submit_answer(req: SubmitAnswerRequest, child_id : int, db: Session = Depends(get_db)):
     session = GAME_SESSIONS.get(req.session_id)
     if not session:
@@ -4985,7 +4985,7 @@ def submit_answer(req: SubmitAnswerRequest, child_id : int, db: Session = Depend
 
 
 # GAME PROGRESS ENDPOINT **************************************************************************************************************
-@app.get("/kids/v2/game/progress/spell/{child_id}", tags=["SPELL BREAKER"])
+@app.get("/kids/v1/game/progress/spell/{child_id}", tags=["SPELL BREAKER"])
 def get_spellbreaker_progress(child_id: int, db: Session = Depends(get_db)):
     progress_records = db.query(GameProgress_SPELL).filter(GameProgress_SPELL.child_id == child_id).all()
     if not progress_records:
@@ -5057,7 +5057,7 @@ def get_spellbreaker_progress(child_id: int, db: Session = Depends(get_db)):
 
 
 # FIXED REPLAY ENDPOINT *************************************************************************************************************
-@app.get("/kids/v2/game/replay_level/spell/{child_id}", tags=["SPELL BREAKER"])
+@app.get("/kids/v1/game/replay_level/spell/{child_id}", tags=["SPELL BREAKER"])
 def replay_last_completed_level_spell(child_id: int, db: Session = Depends(get_db)):
     """
     Replay the last completed OR recently failed level automatically for SPELL BREAKER game.
@@ -5150,7 +5150,7 @@ def replay_last_completed_level_spell(child_id: int, db: Session = Depends(get_d
     }
 
 # NEXT LEVEL ENDPOINT : *********************************************************************************************************
-@app.get("/kids/v2/game/next_level/spell/{child_id}", tags=["SPELL BREAKER"])
+@app.get("/kids/v1/game/next_level/spell/{child_id}", tags=["SPELL BREAKER"])
 def next_level_spell(child_id: int, db: Session = Depends(get_db)):
     """
     Move the child to the next unlocked level automatically after completing the previous one.
@@ -5553,7 +5553,7 @@ def fetch_questions_for_level(db: Session, level: int, child_id: int = None):
 # -----------------------------------------------------------
 # WELCOME ENDPOINT
 # -----------------------------------------------------------
-@app.get("/kids/v2/welcome/mind/{child_id}", tags=["MIND MYSTERY"])
+@app.get("/kids/v1/welcome/mind/{child_id}", tags=["MIND MYSTERY"])
 def welcome_player(child_id: int, db: Session = Depends(get_db)):
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
     if not child:
@@ -5586,7 +5586,7 @@ def welcome_player(child_id: int, db: Session = Depends(get_db)):
 # START LEVEL
 # -----------------------------------------------------------
 
-@app.get("/kids/v2/mind-mystery/Start", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
+@app.get("/kids/v1/mind-mystery/Start", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
 def start_level(session_id: str = None, child_id: int = None, db: Session = Depends(get_db)):
 # def start_level(child_id: int = None, db: Session = Depends(get_db)):
 
@@ -5700,7 +5700,7 @@ def start_level(session_id: str = None, child_id: int = None, db: Session = Depe
 # SUBMIT
 # -----------------------------------------------------------
 
-@app.post("/kids/v2/mind-mystery/Submit", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
+@app.post("/kids/v1/mind-mystery/Submit", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
 def submit_answer(req: WhoAmIAnswerRequest, child_id : int, db: Session = Depends(get_db)):
 
     if req.session_id not in GAME_SESSIONS:
@@ -5941,7 +5941,7 @@ def submit_answer(req: WhoAmIAnswerRequest, child_id : int, db: Session = Depend
 # -----------------------------------------------------------
 # PROGRESS
 # -----------------------------------------------------------
-@app.get("/kids/v2/mind-mystery/Progress", tags =["MIND MYSTERY"])
+@app.get("/kids/v1/mind-mystery/Progress", tags =["MIND MYSTERY"])
 def progress(child_id: int, db: Session = Depends(get_db)):
 
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
@@ -5982,7 +5982,7 @@ def progress(child_id: int, db: Session = Depends(get_db)):
 # -----------------------------------------------------------
 # SELECT
 # -----------------------------------------------------------
-@app.get("/kids/v2/mind-mystery/Select_level", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
+@app.get("/kids/v1/mind-mystery/Select_level", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
 def select_level(child_id: int, selected_level: int, db: Session = Depends(get_db)):
 
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
@@ -6055,7 +6055,7 @@ def select_level(child_id: int, selected_level: int, db: Session = Depends(get_d
 # -----------------------------------------------------------
 # REPLAY
 # -----------------------------------------------------------
-@app.get("/kids/v2/mind-mystery/Replay", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
+@app.get("/kids/v1/mind-mystery/Replay", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
 def replay_last_level(child_id: int, db: Session = Depends(get_db)):
 
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
@@ -6127,7 +6127,7 @@ def replay_last_level(child_id: int, db: Session = Depends(get_db)):
 # -----------------------------------------------------------
 
 
-# @app.get("/kids/v2/mind-mystery/NextLevel", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
+# @app.get("/kids/v1/mind-mystery/NextLevel", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
 # def next_level(child_id: int, db: Session = Depends(get_db)):
 
 #     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
@@ -6190,7 +6190,7 @@ def replay_last_level(child_id: int, db: Session = Depends(get_db)):
 
 #new logic next level : ************************************************************************************************
 # 
-@app.get("/kids/v2/mind-mystery/NextLevel", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
+@app.get("/kids/v1/mind-mystery/NextLevel", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
 def next_level(child_id: int, db: Session = Depends(get_db)):
 
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
