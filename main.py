@@ -2628,7 +2628,7 @@ async def generate_chat_audio(child_id: int, message_id: Optional[int] = None, d
 class STTRequest(BaseModel):
     audio_base64: str
 
-@app.post("/kids/v2/speech-to-text")
+@app.post("/kids/v2/speech-to-text",tags=["Chat Functionalities"]  )
 async def speech_to_text(request: STTRequest):
     try:
         audio_bytes = base64.b64decode(request.audio_base64)
