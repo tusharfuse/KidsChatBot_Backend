@@ -5097,6 +5097,8 @@ def get_spellbreaker_progress(child_id: int, db: Session = Depends(get_db)):
     # All completed levels
     completed_levels = [p.level for p in progress_records if p.status == "Completed"]
 
+    #Points Summary
+    points_summary = {p.level: p.score for p in progress_records if p.status == "Completed"}
     # Fetch the most recent completed record
     latest_completed = (
         db.query(GameProgress_SPELL)
@@ -5135,8 +5137,7 @@ def get_spellbreaker_progress(child_id: int, db: Session = Depends(get_db)):
     else:
         next_level = (latest_completed.level + 1) if latest_completed and latest_completed.level < TOTAL_LEVELS else 1
 
-    # Points summary
-    points_summary = {p.level: p.score for p in progress_records if p.status == "Completed"}
+
 
     # New Logic: Next Unlocked Level
     highest_completed = max(completed_levels, default=0)
@@ -6101,13 +6102,22 @@ def progress(child_id: int, db: Session = Depends(get_db)):
     current_level = first_not
     next_level = current_level + 1 if current_level < 60 else None
 
+    # All completed levels
+    completed_levels = [r.level for r in recs if r.status == "Completed"]
+
+    #Points Summary
+    points_summary = {r.level: r.score for r in recs if r.status == "Completed"}
+
     return {
         "username": child.username,
         "child_id": child_id,
         "completed_levels": len(completed),
         "current_level": current_level,
         "next_level": next_level,
-        "total_levels": 60
+        "total_levels": 60,
+        "points_per_level": points_summary,
+        "total_completed_levels": completed_levels
+
     }
 
 
