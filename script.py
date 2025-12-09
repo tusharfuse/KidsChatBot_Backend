@@ -33,8 +33,8 @@ with open(ANIMALS_CSV, encoding="utf-8") as f:
 
     for row in reader:
         cur.execute("""
-            INSERT INTO Animals (id, question, option_a, option_b, option_c, option_d, image)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO Animals (id, question, option_a, option_b, option_c, option_d, image,correct_option,fact)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             int(row["id"]),
             row["question"],
@@ -42,7 +42,9 @@ with open(ANIMALS_CSV, encoding="utf-8") as f:
             row["option_b"],
             row["option_c"],
             row["option_d"],
-            row.get("image")
+            row.get("image"),
+            row["correct_option"],
+            row["fact"]
         ))
 
 conn.commit()

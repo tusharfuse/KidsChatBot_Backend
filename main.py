@@ -3317,10 +3317,10 @@ async def notify_reminder(reminder_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return {"message": "Reminder marked as notified"}
-
-@app.get("/kids/v1/parent-dashboard/{parent_id}",tags=["Dashboard"])
+@app.get("/kids/v1/parent-dashboard/{parent_id}", tags=["Dashboard"])
 async def get_parent_dashboard(parent_id: int, db: Session = Depends(get_db)):
     """Get parent dashboard with aggregated child information, credits, chat history, and flagged messages"""
+
     parent = db.query(ParentDB).filter(ParentDB.id == parent_id).first()
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
@@ -3329,7 +3329,8 @@ async def get_parent_dashboard(parent_id: int, db: Session = Depends(get_db)):
     children_data = []
 
     for child in children:
-        # Get profile
+
+        # ---------------- PROFILE DATA ----------------
         profile = {
             "id": child.id,
             "fullname": child.fullname,
@@ -3340,20 +3341,30 @@ async def get_parent_dashboard(parent_id: int, db: Session = Depends(get_db)):
             "optional_dream_career_1": child.optional_dream_career_1,
             "optional_dream_career_2": child.optional_dream_career_2,
             "avatar": child.avatar,
+
+            # 🔥 NEW FIELD ADDED HERE
+            "is_blocked": True if child.blocked else False,
+
             "credits": {
                 "story": child.credits_story or 0,
                 "joke": child.credits_joke or 0,
                 "question": child.credits_question or 0,
                 "quiz": child.credits_quiz or 0,
                 "chat": child.credits_chat or 0,
-                "total": child.total_credits or 0
+                "total": child.total_credits or 0,
             },
             "last_login": child.last_login.isoformat() if child.last_login else None,
             "created_at": child.created_at.isoformat() if child.created_at else None
         }
 
-        # Get full chat history grouped by date
-        messages = db.query(ChatMessage).filter(ChatMessage.child_id == child.id).order_by(ChatMessage.timestamp.asc()).all()
+        # ---------------- CHAT HISTORY ----------------
+        messages = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.child_id == child.id)
+            .order_by(ChatMessage.timestamp.asc())
+            .all()
+        )
+
         chat_history = {}
         for msg in messages:
             msg_date = msg.timestamp.date().isoformat()
@@ -3367,20 +3378,27 @@ async def get_parent_dashboard(parent_id: int, db: Session = Depends(get_db)):
                 "flagged": msg.flagged
             })
 
-        # Get all flagged messages
-        flagged_messages = db.query(ChatMessage).filter(ChatMessage.child_id == child.id, ChatMessage.flagged == 1).order_by(ChatMessage.timestamp.desc()).all()
+        # ---------------- FLAGGED MESSAGES ---------------
+        flagged_messages = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.child_id == child.id, ChatMessage.flagged == 1)
+            .order_by(ChatMessage.timestamp.desc())
+            .all()
+        )
+
         flagged_data = [{
             "id": msg.id,
             "message": msg.message,
             "response": msg.response,
             "timestamp": msg.timestamp.isoformat(),
-            "flagged": msg.flagged
+            "flagged": msg.flagged,
         } for msg in flagged_messages]
 
+        # Append final child block
         children_data.append({
             "profile": profile,
             "chat_history": chat_history,
-            "flagged_messages": flagged_data
+            "flagged_messages": flagged_data,
         })
 
     return {
@@ -3390,9 +3408,9 @@ async def get_parent_dashboard(parent_id: int, db: Session = Depends(get_db)):
             "gender": parent.gender,
             "email": parent.email,
             "relation": parent.relation,
-            "created_at": parent.created_at.isoformat()
+            "created_at": parent.created_at.isoformat(),
         },
-        "children": children_data
+        "children": children_data,
     }
 
 
@@ -5503,7 +5521,7 @@ def fetch_questions_for_level(db: Session, level: int, child_id: int = None):
             if img_val and not img_val.startswith("/"):
                 final_img = img_val
             else:
-                final_img = f"http://127.0.0.1:8000{img_val}" if img_val else None
+                final_img = f"https://semantic.onesmarter.com{img_val}" if img_val else None
 
             if age_slab == "11-15" and not final_img:
                 final_img = "NA"
@@ -5699,10 +5717,10 @@ def start_level(session_id: str = None, child_id: int = None, db: Session = Depe
 # -----------------------------------------------------------
 # SUBMIT
 # -----------------------------------------------------------
-
 @app.post("/kids/v1/mind-mystery/Submit", response_model=WhoAmIStateResponse, tags=["MIND MYSTERY"])
-def submit_answer(req: WhoAmIAnswerRequest, child_id : int, db: Session = Depends(get_db)):
+def submit_answer(req: WhoAmIAnswerRequest, child_id: int, db: Session = Depends(get_db)):
 
+    # ---------------------- SESSION VALIDATION ----------------------
     if req.session_id not in GAME_SESSIONS:
         raise HTTPException(400, "Invalid Session")
 
@@ -5711,28 +5729,40 @@ def submit_answer(req: WhoAmIAnswerRequest, child_id : int, db: Session = Depend
     q_idx = sess["question_number"] - 1
     child_id = sess["child_id"]
 
-    # qdata = sess["questions"][q_idx]
+    # Fix index overflow
     if q_idx < 0 or q_idx >= len(sess["questions"]):
         q_idx = len(sess["questions"]) - 1
 
-    qdata = sess["questions"][q_idx]
+    qdata = sess["questions"][q_idx]        # FULL VERSION with id
 
+    # ---------------------- DB LOOKUP ----------------------
+    q_id = qdata.get("id")
+    if not q_id:
+        raise HTTPException(500, f"Question ID missing in session. qdata={qdata}")
 
     model = Animals if level <= 7 else FunnyWhoami
-    row = db.query(model).filter(model.id == qdata["id"]).first()
+    row = db.query(model).filter(model.id == q_id).first()
 
+    if not row:
+        raise HTTPException(500, f"No DB record found for question id={q_id}")
+
+    if not row.correct_option:
+        raise HTTPException(500, f"correct_option is NULL for id={q_id}")
 
     correct_opt = row.correct_option.lower().strip()
+
     raw_fact = getattr(row, "fact", None) if level <= 7 else getattr(row, "fun_fact", None)
     fact_text = clean_fact(raw_fact) or "Keep learning something new every day!"
 
-    # ---------- TIMEOUT ----------
+    # ---------------------- TIMEOUT HANDLING ----------------------
     elapsed = int(time.time() - sess["start_time"])
     if elapsed >= TIME_LIMIT_PER_QUESTION:
+
         sess["lives"] -= 1
 
+        # ----- Game Over on Timeout -----
         if sess["lives"] <= 0:
-            # mark failure
+
             rec = db.query(GameProgress_WHOAMI).filter(
                 GameProgress_WHOAMI.child_id == child_id,
                 GameProgress_WHOAMI.level == level
@@ -5744,34 +5774,39 @@ def submit_answer(req: WhoAmIAnswerRequest, child_id : int, db: Session = Depend
                 rec.status = "Started"
                 db.commit()
 
+            ui_q = qdata.copy()
+            ui_q.pop("id", None)
+
             return WhoAmIStateResponse(
                 session_id=req.session_id,
                 level=level,
                 question_number=sess["question_number"],
                 total_questions_in_level=sess["total_questions"],
-                question=qdata["question"],
+                question=ui_q["question"],
                 options={
-                    "a": qdata["option_a"],
-                    "b": qdata["option_b"],
-                    "c": qdata["option_c"],
-                    "d": qdata["option_d"]
+                    "a": ui_q["option_a"],
+                    "b": ui_q["option_b"],
+                    "c": ui_q["option_c"],
+                    "d": ui_q["option_d"]
                 },
                 points=sess["points"],
                 reward_message="Time Out! Game Over.",
                 lives=0,
                 time_left=0,
-                image=qdata.get("image"),
+                image=ui_q.get("image"),
                 submitted_answer=req.answer,
                 correct_answer=correct_opt,
                 fact=fact_text
             )
 
-        # timeout but continue
+        # ----- Timeout but continue -----
         new_qs, _ = fetch_questions_for_level(db, level, child_id)
-        newq = random.choice(new_qs)
-        newq.pop("id", None)
 
-        sess["questions"][q_idx] = newq
+        new_raw = random.choice(new_qs)   # full version WITH id
+        new_display = new_raw.copy()      # UI version
+        new_display.pop("id", None)
+
+        sess["questions"][q_idx] = new_raw     # store full version with id
         sess["start_time"] = time.time()
 
         return WhoAmIStateResponse(
@@ -5779,33 +5814,37 @@ def submit_answer(req: WhoAmIAnswerRequest, child_id : int, db: Session = Depend
             level=level,
             question_number=sess["question_number"],
             total_questions_in_level=sess["total_questions"],
-            question=newq["question"],
+            question=new_display["question"],
             options={
-                "a": newq["option_a"],
-                "b": newq["option_b"],
-                "c": newq["option_c"],
-                "d": newq["option_d"]
+                "a": new_display["option_a"],
+                "b": new_display["option_b"],
+                "c": new_display["option_c"],
+                "d": new_display["option_d"]
             },
             points=sess["points"],
             reward_message="Timeout! Life lost.",
             lives=sess["lives"],
             time_left=60,
-            image=newq.get("image"),
+            image=new_display.get("image"),
             submitted_answer=req.answer,
             correct_answer=correct_opt,
             fact=fact_text
         )
 
-    # ---------- NORMAL CHECK ----------
+    # ---------------------- NORMAL ANSWER CHECK ----------------------
     correct = (req.answer.lower().strip() == correct_opt)
 
+    # ---------------------------------------------------------
+    #                 CORRECT ANSWER
+    # ---------------------------------------------------------
     if correct:
-        # correct answer
+
         sess["points"] += 10
         sess["question_number"] += 1
 
-        # level complete
+        # ----- Level Completed -----
         if sess["question_number"] > sess["total_questions"]:
+
             rec = db.query(GameProgress_WHOAMI).filter(
                 GameProgress_WHOAMI.child_id == child_id,
                 GameProgress_WHOAMI.level == level
@@ -5818,32 +5857,36 @@ def submit_answer(req: WhoAmIAnswerRequest, child_id : int, db: Session = Depend
                 rec.last_updated = get_ist_now()
                 db.commit()
 
+            ui_q = qdata.copy()
+            ui_q.pop("id", None)
+
             return WhoAmIStateResponse(
                 session_id=req.session_id,
                 level=level,
                 question_number=sess["total_questions"],
                 total_questions_in_level=sess["total_questions"],
-                question=qdata["question"],
+                question=ui_q["question"],
                 options={
-                    "a": qdata["option_a"],
-                    "b": qdata["option_b"],
-                    "c": qdata["option_c"],
-                    "d": qdata["option_d"]
+                    "a": ui_q["option_a"],
+                    "b": ui_q["option_b"],
+                    "c": ui_q["option_c"],
+                    "d": ui_q["option_d"]
                 },
-                
                 points=sess["points"],
                 reward_message=f"Level {level} Completed! You can start the next level manually.",
                 lives=sess["lives"],
                 time_left=0,
-                image=qdata.get("image"),
+                image=ui_q.get("image"),
                 submitted_answer=req.answer,
                 correct_answer=correct_opt,
                 fact=fact_text
             )
 
-        # next question
-        next_q = sess["questions"][sess["question_number"] - 1].copy()
-        next_q.pop("id", None)
+        # ----- Next Question -----
+        next_raw = sess["questions"][sess["question_number"] - 1]
+        next_display = next_raw.copy()
+        next_display.pop("id", None)
+
         sess["start_time"] = time.time()
 
         return WhoAmIStateResponse(
@@ -5851,68 +5894,77 @@ def submit_answer(req: WhoAmIAnswerRequest, child_id : int, db: Session = Depend
             level=level,
             question_number=sess["question_number"],
             total_questions_in_level=sess["total_questions"],
-            question=next_q["question"],
+            question=next_display["question"],
             options={
-                "a": next_q["option_a"],
-                "b": next_q["option_b"],
-                "c": next_q["option_c"],
-                "d": next_q["option_d"]
+                "a": next_display["option_a"],
+                "b": next_display["option_b"],
+                "c": next_display["option_c"],
+                "d": next_display["option_d"]
             },
             points=sess["points"],
             reward_message="Correct! +10 points",
             lives=sess["lives"],
             time_left=60,
-            image=next_q.get("image"),
+            image=next_display.get("image"),
             submitted_answer=req.answer,
             correct_answer=correct_opt,
             fact=fact_text
         )
 
+    # ---------------------------------------------------------
+    #                 WRONG ANSWER
+    # ---------------------------------------------------------
     else:
-        # wrong answer
+
         sess["lives"] -= 1
 
+        # ----- Game Over -----
         if sess["lives"] <= 0:
-            # save failure
+
             rec = db.query(GameProgress_WHOAMI).filter(
                 GameProgress_WHOAMI.child_id == child_id,
                 GameProgress_WHOAMI.level == level
             ).first()
+
             if rec:
                 rec.temp_status = "Failed"
                 rec.temp_last_updated = get_ist_now()
                 rec.status = "Started"
                 db.commit()
 
+            ui_q = qdata.copy()
+            ui_q.pop("id", None)
+
             return WhoAmIStateResponse(
                 session_id=req.session_id,
                 level=level,
                 question_number=sess["question_number"],
                 total_questions_in_level=sess["total_questions"],
-                question=qdata["question"],
+                question=ui_q["question"],
                 options={
-                    "a": qdata["option_a"],
-                    "b": qdata["option_b"],
-                    "c": qdata["option_c"],
-                    "d": qdata["option_d"]
+                    "a": ui_q["option_a"],
+                    "b": ui_q["option_b"],
+                    "c": ui_q["option_c"],
+                    "d": ui_q["option_d"]
                 },
-
                 points=sess["points"],
                 reward_message="Wrong! Game Over.",
                 lives=0,
                 time_left=0,
-                image=qdata.get("image"),
+                image=ui_q.get("image"),
                 submitted_answer=req.answer,
                 correct_answer=correct_opt,
                 fact=fact_text
             )
-                                                                                         
-        # wrong but continue
-        new_qs, _ = fetch_questions_for_level(db, level, child_id)
-        newq = random.choice(new_qs)
-        newq.pop("id", None)
 
-        sess["questions"][q_idx] = newq
+        # ----- Wrong but continue -----
+        new_qs, _ = fetch_questions_for_level(db, level, child_id)
+
+        new_raw = random.choice(new_qs)
+        new_display = new_raw.copy()
+        new_display.pop("id", None)
+
+        sess["questions"][q_idx] = new_raw
         sess["start_time"] = time.time()
 
         return WhoAmIStateResponse(
@@ -5920,18 +5972,18 @@ def submit_answer(req: WhoAmIAnswerRequest, child_id : int, db: Session = Depend
             level=level,
             question_number=sess["question_number"],
             total_questions_in_level=sess["total_questions"],
-            question=newq["question"],
+            question=new_display["question"],
             options={
-                "a": newq["option_a"],
-                "b": newq["option_b"],
-                "c": newq["option_c"],
-                "d": newq["option_d"]
+                "a": new_display["option_a"],
+                "b": new_display["option_b"],
+                "c": new_display["option_c"],
+                "d": new_display["option_d"]
             },
             points=sess["points"],
             reward_message=f"Wrong! Correct was {correct_opt}. New question!",
             lives=sess["lives"],
             time_left=60,
-            image=newq.get("image"),
+            image=new_display.get("image"),
             submitted_answer=req.answer,
             correct_answer=correct_opt,
             fact=fact_text
