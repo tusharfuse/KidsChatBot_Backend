@@ -1591,7 +1591,7 @@ async def resend_otp(request: ResendOtpRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to resend OTP")
 
 
-@app.post("/kids/v1/complete-signup", response_model=SignupResponse, tags = ["signup"])
+@app.post("/kids/v1/complete-signup", response_model=SignupResponse, tags=["signup"])
 async def complete_signup(request: CompleteSignupRequest, db: Session = Depends(get_db)):
     """
     Verify OTP and complete signup
@@ -1599,8 +1599,7 @@ async def complete_signup(request: CompleteSignupRequest, db: Session = Depends(
     try:
         otp = request.otp
 
-        # Check if user already exists before OTP validation
-        # This helps avoid confusing "Signup data not found" error for existing users
+        # ---- OTP VALIDATION (unchanged) ----
         if otp in signup_data_store:
             signup_data, _ = signup_data_store[otp]
             if db.query(ChildDB).filter(ChildDB.username == signup_data['username']).first() or \
@@ -1609,69 +1608,58 @@ async def complete_signup(request: CompleteSignupRequest, db: Session = Depends(
 
         if otp not in otp_store:
             raise HTTPException(status_code=400, detail="OTP not requested")
+
         timestamp = otp_store[otp]
-        if time.time() - timestamp > 300:  # 5 min
+        if time.time() - timestamp > 300:
             del otp_store[otp]
-            if otp in signup_data_store:
-                del signup_data_store[otp]
+            if otp in signup_data_store: del signup_data_store[otp]
             if otp in otp_to_email:
                 email = otp_to_email[otp]
-                if email in email_to_otp:
-                    del email_to_otp[email]
+                if email in email_to_otp: del email_to_otp[email]
                 del otp_to_email[otp]
             raise HTTPException(status_code=400, detail="OTP expired")
 
-        # Retrieve signup data
         if otp not in signup_data_store:
             raise HTTPException(status_code=400, detail="Signup data not found")
+
         signup_data, data_timestamp = signup_data_store[otp]
-        if time.time() - data_timestamp > 300:  # 5 min
-            del signup_data_store[otp]
-            del otp_store[otp]
+        if time.time() - data_timestamp > 300:
+            del signup_data_store[otp]; del otp_store[otp]
             if otp in otp_to_email:
                 email = otp_to_email[otp]
-                if email in email_to_otp:
-                    del email_to_otp[email]
+                if email in email_to_otp: del email_to_otp[email]
                 del otp_to_email[otp]
             raise HTTPException(status_code=400, detail="Signup data expired")
 
-        # Clean up
+        # cleanup
         del otp_store[otp]
         del signup_data_store[otp]
         if otp in otp_to_email:
             email = otp_to_email[otp]
-            if email in email_to_otp:
-                del email_to_otp[email]
+            if email in email_to_otp: del email_to_otp[email]
             del otp_to_email[otp]
 
-        # Create accounts
-        # Validate date of birth (already validated, but parse again)
+        # ---- CREATE ACCOUNTS ----
         dob = datetime.strptime(signup_data['dob'], '%Y-%m-%d').date()
 
-        # Check if username already exists
         if db.query(ChildDB).filter(ChildDB.username == signup_data['username']).first():
             raise HTTPException(status_code=409, detail="Username already exists")
 
-        # Check if parent email already exists
         if db.query(ParentDB).filter(ParentDB.email == signup_data['parent_email']).first():
             raise HTTPException(status_code=409, detail="Parent email already exists")
 
-        # Create parent record first
-        parent = ParentDB(  # type: ignore
+        parent = ParentDB(
             name=signup_data['parent_name'],
             gender=signup_data['parent_gender'],
             email=signup_data['parent_email'],
             password_hash=hash_password(signup_data['parent_password']),
             relation=signup_data['relation']
         )
-
-        # Save parent to database to get ID
         db.add(parent)
         db.commit()
         db.refresh(parent)
 
-        # Create child record with parent_id set
-        child = ChildDB(  # type: ignore
+        child = ChildDB(
             fullname=signup_data['fullname'],
             username=signup_data['username'],
             dob=dob,
@@ -1683,12 +1671,31 @@ async def complete_signup(request: CompleteSignupRequest, db: Session = Depends(
             parent_id=parent.id
         )
 
-        
-        # Save child to database  creating rows for the child**********************************************************
         db.add(child)
         db.commit()
         db.refresh(child)
-        # After db.refresh(child)
+
+        # 🚀 SET AVATAR *IMMEDIATELY* (fix)
+        avatar_filename = get_avatar_for_career(
+            signup_data['default_dream_career'],
+            signup_data['gender'],
+            child.id
+        )
+        child.avatar = avatar_filename
+        db.commit()
+        db.refresh(child)
+
+        # PRE-DOWNLOAD OPTIONAL AVATARS
+        all_careers = [
+            signup_data['default_dream_career'],
+            signup_data.get('optional_dream_career_1'),
+            signup_data.get('optional_dream_career_2'),
+        ]
+        for career in all_careers:
+            if career:
+                get_avatar_for_career(career, signup_data['gender'], child.id)
+
+        # NOW create 100 game rows (after avatar is set)
         for lvl in range(1, 101):
             progress = GameProgress(
                 child_id=child.id,
@@ -1698,77 +1705,19 @@ async def complete_signup(request: CompleteSignupRequest, db: Session = Depends(
                 last_updated=datetime.utcnow(),
                 temp_status="Started",
                 temp_last_updated=datetime.utcnow(),
-                
             )
             db.add(progress)
         db.commit()
 
-
-        # same logic for spell breaker 100 rows created for each user for storing of each level data*************
         initialize_spell_progress_for_child(db, child.id)
-
-        # whoami logic*******************************************************************
         initialize_whoami_progress_for_child(db, child.id)
-
-
-        # Save child to database first to get ID
-        db.add(child)
-        db.commit()
-        db.refresh(child)
-
-        # Generate and set avatar based on default dream career
-        avatar_filename = get_avatar_for_career(signup_data['default_dream_career'], signup_data['gender'], child.id)
-        child.avatar = avatar_filename
-        db.commit()
-        # NEW: Pre-download avatars for all dream careers (default + optionals)
-        all_careers = [signup_data['default_dream_career']]
-        if signup_data.get('optional_dream_career_1'):
-            all_careers.append(signup_data['optional_dream_career_1'])
-        if signup_data.get('optional_dream_career_2'):
-            all_careers.append(signup_data['optional_dream_career_2'])
-        
-        for career in all_careers:
-            # This will check and download if not present
-            get_avatar_for_career(career, signup_data['gender'], child.id)
-
-# # NEW LOGIC PRESENT HERE :07-11-2025 ************************************************************************************************
-#         # Generate avatars for remaining dream careers (if not present in mapping)
-#         all_careers = [
-#             # signup_data['default_dream_career'],
-#             signup_data.get('optional_dream_career_1'),
-#             signup_data.get('optional_dream_career_2')
-#         ]
-
-#         child_folder = f"avatars/{child.id}"
-#         os.makedirs(child_folder, exist_ok=True)
-
-#         for career in all_careers:
-#             if career and career.strip():
-#                 career_lower = career.lower().strip()
-
-#                 # If not in mapping, generate and download
-#                 if career_lower not in CAREER_AVATAR_MAPPING:
-#                     filename = f"{career_lower.replace(' ', '_')}_{signup_data['gender'].lower()}_avatar.png"
-#                     avatar_path = os.path.join(child_folder, filename)
-
-#                     if not os.path.exists(avatar_path):
-#                         print(f"Generating avatar for unknown career: {career_lower}")
-#                         generate_and_download_avatar(career, filename, signup_data['gender'], child_folder)
-#                 else:
-#                     # If already in mapping, ensure that mapped avatar exists in child folder
-#                     mapped_filename = CAREER_AVATAR_MAPPING[career_lower]
-#                     mapped_path = os.path.join(child_folder, mapped_filename)
-#                     if not os.path.exists(mapped_path):
-#                         print(f"Mapping avatar copied for: {career_lower}")
-#                         # Optional: Copy from a master folder if available (not required to change anything else)
-#                         # shutil.copy(f"master_avatars/{mapped_filename}", mapped_path)
-#         # ************************************************************************************************
 
         return SignupResponse(
             message="Signup successful!",
             child_id=child.id,
             parent_id=parent.id,
-            username=child.username
+            username=child.username,
+            avatar=child.avatar   # 🌟 Added for frontend convenience
         )
 
     except HTTPException:
