@@ -961,22 +961,29 @@ def generate_story(child: ChildDB) -> dict:
     career = child.default_dream_career
 
     prompt = f"""
-Generate a short, engaging children's story for a {age}-year-old {gender} child (age slab {age_slab}) who dreams of becoming a {career}.
+Generate a children's story tailored for a {age}-year-old {gender} child (age slab: {age_slab}) who dreams of becoming a {career}.
 
 OUTPUT FORMAT (use REAL line breaks, not \\n):
 
 Title: <fun, kid-friendly title>
 
 Story:
-<one continuous paragraph, 100–150 words, complete beginning-middle-end>
+<one continuous paragraph with a clear beginning, middle, and end>
 
 Moral:
 <one short, positive moral>
 
+STORY LENGTH RULES (STRICT):
+- If age is between 5–7 years → Story must be VERY SHORT (30–50 words)
+- If age is between 8–10 years → Story must be MEDIUM length (60-85 words)
+- If age is 11 years or above → Story must be LONGER (85–150 words)
+
 STRICT RULES:
 - Output MUST follow the exact 3-part structure: Title, Story, Moral.
-- NO extra text, NO explanations.
+- Story must be age-appropriate, simple, and engaging.
+- NO extra text, NO explanations, NO emojis.
 """
+
 
     response = openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
@@ -1174,11 +1181,13 @@ def generate_question(child: ChildDB) -> dict:
 
 
 
-def generate_quiz(child: ChildDB, topic: str = None) -> dict:
+
+def generate_quiz(child: ChildDB, db: Session, topic: str = None) -> dict:
     """Generate a consistent quiz question in clean JSON format for UI."""
     global openai_client
+
     if openai_client is None:
-        api_key = os.getenv('OPENAI_API_KEY')
+        api_key = os.getenv("OPENAI_API_KEY")
         openai_client = OpenAI(api_key=api_key)
 
     age = calculate_age(child.dob)
@@ -1187,40 +1196,104 @@ def generate_quiz(child: ChildDB, topic: str = None) -> dict:
 
     # Use provided topic or default dream career
     career = topic if topic is not None else child.default_dream_career
-
     unique_id = random.randint(1000, 9999)
 
-    # SYSTEM PROMPT (strong enforcement)
-    system_msg = """
-    You ALWAYS output valid JSON without any markdown, backticks, explanations, or comments.
-    Output ONLY the JSON object. Never include \`\`\`, 'json', text, or formatting outside JSON.
-    """
+    # --------------------------------------------------
+    # OPTION A: FETCH PREVIOUS QUESTIONS (PROMPT ONLY)
+    # --------------------------------------------------
+    previous_quizzes = (
+        db.query(QuizDB.question_data)
+        .filter(QuizDB.child_id == child.id)
+        .order_by(QuizDB.date_created.desc())
+        .limit(5)
+        .all()
+    )
 
+    previous_quiz_context = (
+        "\n".join(
+            f"- {json.loads(q.question_data).get('question', '')}"
+            for q in previous_quizzes
+        )
+        if previous_quizzes
+        else "None"
+    )
+
+    # --------------------------------------------------
+    # SYSTEM PROMPT
+    # --------------------------------------------------
+    system_msg = (
+        "You ALWAYS output valid JSON without markdown, backticks, or explanations. "
+        "Output ONLY the JSON object. No extra text."
+    )
+
+    # --------------------------------------------------
     # USER PROMPT
+    # --------------------------------------------------
+    
     prompt = f"""
-    Generate one multiple-choice question for an {age}-year-old {gender} child (age group: {age_slab})
-    who dreams of becoming a {career}.
+Generate exactly ONE multiple-choice question for an {age}-year-old {gender} child
+(age group: {age_slab}) who dreams of becoming a {career}.
 
-    Vary the profession and action each time to ensure uniqueness.
-    The question must relate to the dream career only.
+The question MUST relate ONLY to the given career/topic.
+Vary the scenario, action, and context each time.
 
-    Use this structure EXACTLY:
+IMPORTANT NON-REPETITION RULES (STRICT):
+- Do NOT repeat any previously asked question.
+- Do NOT repeat the same question pattern or structure.
+- Avoid similar wording or scenarios.
+- Invent a clearly NEW situation if needed.
 
-    {{
-        "question": "Your question here",
-        "options": {{
-            "A": "Option A text",
-            "B": "Option B text",
-            "C": "Option C text",
-            "D": "Option D text"
-        }},
-        "correct_answer": "A"
-    }}
+Previously used questions (DO NOT repeat):
+{previous_quiz_context}
 
-    Unique ID: {unique_id}
-    """
+DIFFICULTY RULES (GRADUAL & AGE-APPROPRIATE):
 
-    # CALL GPT
+- Age 5–7:
+  * Extremely easy, obvious, and friendly
+  * Focus on recognition or everyday knowledge
+  * No reasoning chains, no tricks, no technical terms
+
+- Age 8–10:
+  * Slightly harder than 5–7, but still comfortable
+  * Requires basic thinking or choosing the best option
+  * No advanced logic or subject expertise
+
+- Age 11+:
+  * Moderate difficulty only (NOT advanced)
+  * Requires simple reasoning, understanding, or application
+  * Still solvable by an average child without stress
+
+Use these rules to decide the difficulty naturally and progressively.
+Do NOT make the jump in difficulty drastic between age groups.
+
+OUTPUT FORMAT (MUST MATCH EXACTLY):
+
+{{
+    "target_parameters": {{
+        "age": {age},
+        "age_slab": "{age_slab}",
+        "career": "{career}",
+        "unique_id": "{unique_id}"
+    }},
+    "question": "Your question here",
+    "options": {{
+        "A": "Option A text",
+        "B": "Option B text",
+        "C": "Option C text",
+        "D": "Option D text"
+    }},
+    "correct_answer": "A",
+    "difficulty_justification": "This question is suitable for the {age_slab} age group because it follows the appropriate difficulty rule for this age by requiring a simple and age-appropriate cognitive task, such as basic recognition, light decision-making, or straightforward reasoning, without introducing unnecessary complexity."
+}}
+
+STRICT RULES:
+- Output ONLY the JSON object.
+- NO explanations outside JSON.
+- One and only one correct answer.
+- Language must be friendly, clear, and age-appropriate.
+"""
+
+
     try:
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -1234,64 +1307,55 @@ def generate_quiz(child: ChildDB, topic: str = None) -> dict:
 
         raw = response.choices[0].message.content.strip()
 
-        # ----------- CLEAN OUTPUT -----------
-        # Remove rogue backticks, "json", markdown noise
-        cleaned = raw.replace("```", "").replace("json", "").strip()
+        # -------- CLEAN OUTPUT --------
+        cleaned = (
+            raw.replace("```", "")
+               .replace("json", "")
+               .replace("\n", " ")
+               .replace("\r", " ")
+               .replace(",}", "}")
+               .replace(", }", "}")
+               .strip()
+        )
 
-        # Auto-fix common JSON issues (trailing commas etc.)
-        cleaned = cleaned.replace("\n", " ").replace("\r", " ")
-        cleaned = cleaned.replace(", }", "}").replace(", }", "}")
-        cleaned = cleaned.replace(",}", "}")
-
-        # ----------- PARSE JSON -----------
         try:
             data = json.loads(cleaned)
 
-            # Shuffle options to randomize display
+            # Shuffle options
             options = list(data["options"].values())
             random.shuffle(options)
 
-            shuffled = {
-                "A": options[0],
-                "B": options[1],
-                "C": options[2],
-                "D": options[3]
-            }
+            shuffled = dict(zip(["A", "B", "C", "D"], options))
 
-            # Determine the new correct answer after shuffling
             original_key = data["correct_answer"]
             original_text = data["options"][original_key]
+            new_correct = next(k for k, v in shuffled.items() if v == original_text)
 
-            new_correct = [k for k, v in shuffled.items() if v == original_text][0]
-
-            # Replace options + correct answer
             data["options"] = shuffled
             data["correct_answer"] = new_correct
 
             return data
 
         except Exception:
-            # JSON parsing failed → NEVER return raw text → regenerate safe fallback question
             return {
                 "question": f"What does a {career} usually do?",
                 "options": {
-                    "A": "Perform tasks related to being a " + career,
-                    "B": "Do something unrelated",
-                    "C": "Play games all day",
+                    "A": f"Do work related to being a {career}",
+                    "B": "Do unrelated things",
+                    "C": "Play all day",
                     "D": "Sleep at work"
                 },
                 "correct_answer": "A"
             }
 
     except Exception:
-        # Total model failure fallback
         return {
             "question": f"What does a {career} do?",
             "options": {
-                "A": f"They perform actions related to being a {career}",
-                "B": "They do unrelated tasks",
-                "C": "They avoid working",
-                "D": "They do nothing"
+                "A": f"They do work related to being a {career}",
+                "B": "They avoid working",
+                "C": "They do nothing",
+                "D": "They play all day"
             },
             "correct_answer": "A"
         }
@@ -2028,19 +2092,25 @@ async def generate_question_endpoint(request: GenerateQuestionRequest, db: Sessi
 
 
 @app.post("/kids/v2/generate-quiz", tags=["Functionalities"])
-async def generate_quiz_endpoint(request: GenerateQuizRequest, db: Session = Depends(get_db)):
+async def generate_quiz_endpoint(
+    request: GenerateQuizRequest,
+    db: Session = Depends(get_db)
+):
     """Generate a new quiz question (non-repeating) OR return the existing unanswered quiz."""
 
     child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
     if not child:
         raise HTTPException(status_code=404, detail="Child not found")
 
-    # -------------------------------
-    # 1️⃣  If an unanswered quiz exists → return it directly
-    # -------------------------------
+    # -------------------------------------------------
+    # 1️⃣ If an unanswered quiz exists → return it
+    # -------------------------------------------------
     existing_quiz = (
         db.query(QuizDB)
-        .filter(QuizDB.child_id == request.child_id, QuizDB.answered == False)
+        .filter(
+            QuizDB.child_id == request.child_id,
+            QuizDB.answered == False
+        )
         .order_by(QuizDB.date_created.desc())
         .first()
     )
@@ -2052,40 +2122,46 @@ async def generate_quiz_endpoint(request: GenerateQuizRequest, db: Session = Dep
             "quiz": {
                 "question": qd["question"],
                 "options": qd["options"],
-                "correct_answer": existing_quiz.correct_answer,
+                "correct_answer": existing_quiz.correct_answer
             },
             "generated_at": existing_quiz.date_created.isoformat(),
         }
 
-    # -------------------------------
-    # 2️⃣  No unanswered quiz → generate a new non-repeating one
-    # -------------------------------
+    # -------------------------------------------------
+    # 2️⃣ Generate a NEW non-repeating quiz
+    # -------------------------------------------------
     now = get_ist_now()
 
-    # All previously asked quiz questions
+    # Normalize topic / career
+    career = request.topic or child.default_dream_career
+
+    # Collect all previously asked questions for this child
     old_questions = {
         json.loads(q.question_data)["question"].strip().lower()
-        for q in db.query(QuizDB).filter(QuizDB.child_id == request.child_id).all()
+        for q in db.query(QuizDB)
+        .filter(QuizDB.child_id == request.child_id)
+        .all()
     }
 
     new_question = None
+    candidate = None
     max_attempts = 10
 
     for _ in range(max_attempts):
-        candidate = generate_quiz(child, request.topic)
+        candidate = generate_quiz(child, db, career)
         q_text = candidate["question"].strip().lower()
 
         if q_text not in old_questions:
             new_question = candidate
             break
 
-    # If somehow repeated every time → accept last generated question but still save it
-    if not new_question:
-        new_question = candidate  
+    # Fallback: accept last generated question
+    if new_question is None:
+        new_question = candidate
 
-    # -------------------------------
+    # -------------------------------------------------
     # 3️⃣ Save quiz to DB
-    # -------------------------------
+    # -------------------------------------------------
     saved = QuizDB(
         child_id=request.child_id,
         question_data=json.dumps(new_question),
@@ -2094,6 +2170,7 @@ async def generate_quiz_endpoint(request: GenerateQuizRequest, db: Session = Dep
         answered=False,
         date_created=now,
     )
+
     db.add(saved)
     db.commit()
 
@@ -2102,7 +2179,7 @@ async def generate_quiz_endpoint(request: GenerateQuizRequest, db: Session = Dep
         "quiz": {
             "question": new_question["question"],
             "options": new_question["options"],
-            "correct_answer": new_question["correct_answer"],
+            "correct_answer": new_question["correct_answer"]
         },
         "generated_at": now.isoformat(),
     }
