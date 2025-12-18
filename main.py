@@ -29,6 +29,12 @@ import io
 import requests
 import logging
 import shutil
+import multiprocessing
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
+
 
 
 # for postgresql database******************************************************************************************************************** 
@@ -369,7 +375,6 @@ class ChildDB(Base):
     total_credits: Mapped[int] = mapped_column(Integer, default=0)
     daily_credits: Mapped[int] = mapped_column(Integer, default=0)
     last_credit_reset: Mapped[datetime] = mapped_column(DateTime, default=get_ist_now)
-    last_question_credited_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)  # New field to track credit for question
     last_question_answered: Mapped[bool] = mapped_column(Boolean, default=False)
     last_career_index: Mapped[int] = mapped_column(Integer, default=0)
     parent_id: Mapped[int] = mapped_column(Integer, ForeignKey('parents.id'))
@@ -387,6 +392,11 @@ class ChildDB(Base):
     avatar: Mapped[str] = mapped_column(String(100), nullable=True)
     last_login: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=get_ist_now)
+    last_story_rewarded_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    last_joke_rewarded_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    last_question_rewarded_date = Column(Date, nullable=True)
+
+
 
     @property
     def dream_career(self) -> str:
@@ -961,32 +971,63 @@ def generate_story(child: ChildDB) -> dict:
     career = child.default_dream_career
 
     prompt = f"""
-Generate a children's story tailored for a {age}-year-old {gender} child (age slab: {age_slab}) who dreams of becoming a {career}.
+Generate a 100% ORIGINAL children's story for a {age}-year-old {gender} child
+(age slab: {age_slab}) who dreams of becoming a {career}.
+
+NON-NEGOTIABLE ORIGINALITY ENFORCEMENT:
+- Every story MUST be fundamentally different from all previous stories in:
+  • character name(s)
+  • setting/location/world
+  • situation or challenge
+  • actions taken by the child
+  • emotional tone
+  • outcome
+  • moral meaning
+- No two stories may share the same narrative arc, flow, or “feel”.
+- If the story could be mistaken as similar in idea, rhythm, or message to any earlier story,
+  it MUST be rejected internally and regenerated.
+
+MANDATORY VARIATION RULES:
+- Use NEW names every time (never repeat character names).
+- Use NEW places every time (realistic, fantasy, futuristic, rural, urban—rotate freely).
+- Use NEW contexts every time (school, travel, discovery, mistake, teamwork, solo effort, etc.).
+- Do NOT rely on common tropes, templates, or familiar story beats.
 
 OUTPUT FORMAT (use REAL line breaks, not \\n):
 
-Title: <fun, kid-friendly title>
+Title: <completely new, never-reused, kid-friendly title>
 
 Story:
-<one continuous paragraph with a clear beginning, middle, and end>
+<one single paragraph with a clear beginning, middle, and end>
 
 Moral:
-<one short, positive moral>
+<one short, positive moral with a meaning not used before>
 
-STORY LENGTH RULES (STRICT):
-- If age is between 5–7 years → Story must be VERY SHORT (30–50 words)
-- If age is between 8–10 years → Story must be MEDIUM length (60-85 words)
-- If age is 11 years or above → Story must be LONGER (85–150 words)
+STORY LENGTH RULES (STRICT — DO NOT VIOLATE):
+- Age 5–7 years → VERY SHORT (30–50 words)
+- Age 8–10 years → MEDIUM (60–85 words)
+- Age 11+ years → LONGER (85–150 words)
 
-STRICT RULES:
-- Output MUST follow the exact 3-part structure: Title, Story, Moral.
-- Story must be age-appropriate, simple, and engaging.
-- NO extra text, NO explanations, NO emojis.
+STYLE & QUALITY RULES:
+- The dream career must be reflected naturally through actions, not named mechanically.
+- Language must be age-appropriate, warm, and clear.
+- Sentence structure, pacing, and storytelling style must vary every time.
+- Avoid clichés, predictable endings, and recycled phrasing.
+
+ABSOLUTE OUTPUT CONSTRAINTS:
+- NO emojis
+- NO explanations
+- NO extra commentary
+- Output ONLY these three sections in this exact order:
+  Title
+  Story
+  Moral
 """
 
 
+
     response = openai_client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4.1",
         messages=[
             {"role": "system", "content": "You generate stories with clear Title, Story, Moral sections."},
             {"role": "user", "content": prompt}
@@ -1059,24 +1100,51 @@ def generate_joke(child: ChildDB) -> dict:
 
     # ---- Joke generation prompt ----
     prompt = f"""
-Generate a short, funny joke for a {age}-year-old {gender} child (age slab {age_slab}) who dreams of becoming a {career}.
+Generate a short, funny joke for a {age}-year-old {gender} child
+(age slab: {age_slab}) who dreams of becoming a {career}.
 
-OUTPUT FORMAT (strict):
-<kid-friendly funny question>
-🤪 <funny, surprising answer with child-friendly emojis>
+The joke MUST be:
+- Easy to understand for the given age slab
+- Fresh, original, and NOT similar in structure, wording, or punchline to previous jokes
+- Based on a NEW context each time (change situation, object, action, or setting)
 
-RULES:
-1. Two lines ONLY — first line is the question, second line begins with 🤪.
-2. No labels like "Question:" or "Answer:".
-3. Keep it under 40 words.
-4. Include emojis only in the answer.
-5. Do NOT include the child's name.
-6. Output EXACTLY the two lines. No extra text.
+AGE-SLAB GUIDELINES:
+- Age 5–7:
+  * Very simple language
+  * Silly, visual humor (animals, toys, school, food)
+  * No wordplay or logic tricks
+
+- Age 8–10:
+  * Simple logic or surprise
+  * Friendly situations (school, sports, gadgets, cartoons)
+  * Still very easy to get
+
+- Age 11+:
+  * Light wordplay or clever twist
+  * Career-related or real-world situations
+  * Still clean and child-friendly
+
+OUTPUT FORMAT (STRICT — MUST FOLLOW EXACTLY):
+<A short, kid-friendly funny question>
+🤪 <A funny, surprising answer with emojis>
+
+RULES (STRICT):
+1. Output EXACTLY two lines — no more, no less.
+2. Line 2 MUST start with 🤪
+3. No labels like "Question:" or "Answer:"
+4. Keep total length under 40 words.
+5. Emojis ONLY in the answer line.
+6. Do NOT include the child's name.
+7. Do NOT repeat joke patterns, punchlines, or setups from earlier jokes.
+8. If a similar joke idea comes to mind, discard it and invent a new one internally.
+
+Return ONLY the joke. No explanations.
 """
+
 
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4.1",
             messages=[
                 {
                     "role": "system",
@@ -1136,20 +1204,43 @@ def generate_question(child: ChildDB) -> dict:
     unique_id = random.randint(1000, 9999)
 
     prompt = f"""
-    Generate a multiple-choice question with 4 options (A, B, C, D) for a {age}-year-old {gender} child (age slab {age_slab}) who dreams of becoming a {career}.
-    Ensure this question is completely unique and different from any previous questions generated for this child - vary the content, style, and topic entirely.
-    Do not repeat any content or phrases from past generations.
-    Unique ID: {unique_id}. Use this to ensure the question is completely unique and varies in topic, content, and options from any previous questions.
-    The question should be age-appropriate, engaging, and related to the {career} or general knowledge suitable for the {age_slab} age group.
-    Make it thought-provoking and fun, encouraging learning.
-    Provide the question, 4 options labeled A, B, C, D, and indicate the correct answer.
-    Format as JSON: {{"question": "Question text", "options": {{"A": "Option A", "B": "Option B", "C": "Option C", "D": "Option D"}}, "correct_answer": "A"}}
-    Keep the question under 50 words.
-    """
+Generate ONE completely ORIGINAL multiple-choice question for a {age}-year-old {gender} child
+(age slab: {age_slab}) who dreams of becoming a {career}.
+
+STRICT UNIQUENESS RULE:
+- The question, scenario, wording, and options must be entirely different from any previously generated content.
+- Do NOT reuse phrasing, concepts, structures, or themes.
+- Use the Unique ID {unique_id} as a hard constraint to ensure originality in topic and framing.
+
+CONTENT RULES:
+- Question must be age-appropriate, engaging, and fun.
+- It should relate naturally to the dream career or to general knowledge suitable for the {age_slab} age group.
+- Keep the question under 50 words.
+
+ANSWER SELECTION RULE (CRITICAL):
+- The correct option MAY be A, B, C, or D — choose randomly and naturally.
+- The option marked as correct MUST exactly match the content of the correct option.
+- Do NOT favor any specific option letter.
+- Ensure there is ONLY ONE correct answer.
+
+OUTPUT FORMAT (JSON ONLY — NO EXTRA TEXT):
+
+{{
+  "question": "Question text",
+  "options": {{
+    "A": "Option A",
+    "B": "Option B",
+    "C": "Option C",
+    "D": "Option D"
+  }},
+  "correct_answer": "<A | B | C | D>"
+}}
+"""
+
 
     try:
         response = openai_client.chat.completions.create(  # type: ignore
-            model="gpt-3.5-turbo",
+            model="gpt-4.1",
             messages=[
                 {"role": "system", "content": "You are a creative multiple-choice question generator for children who always generates completely unique questions with 4 options in JSON format, varying content and style to avoid any repetition."},
                 {"role": "user", "content": prompt}
@@ -1181,13 +1272,21 @@ def generate_question(child: ChildDB) -> dict:
 
 
 
-
-def generate_quiz(child: ChildDB, db: Session, topic: str = None) -> dict:
+def generate_quiz(child: ChildDB, db: Session, topic: Optional[str] = None) -> dict:
     """Generate a consistent quiz question in clean JSON format for UI."""
     global openai_client
 
+    # Initialize OpenAI client if not already done
     if openai_client is None:
         api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+             # Handle case where API key is missing
+             print("Error: OPENAI_API_KEY environment variable not set.")
+             return {
+                "question": "Configuration Error: API Key Missing",
+                "options": {"A": "Check setup", "B": "A", "C": "B", "D": "C"},
+                "correct_answer": "A"
+            }
         openai_client = OpenAI(api_key=api_key)
 
     age = calculate_age(child.dob)
@@ -1227,14 +1326,14 @@ def generate_quiz(child: ChildDB, db: Session, topic: str = None) -> dict:
     )
 
     # --------------------------------------------------
-    # USER PROMPT
+    # USER PROMPT (WITH CHAIN-OF-THOUGHT INSTRUCTION)
     # --------------------------------------------------
     
     prompt = f"""
 Generate exactly ONE multiple-choice question for an {age}-year-old {gender} child
 (age group: {age_slab}) who dreams of becoming a {career}.
 
-The question MUST relate ONLY to the given career/topic.
+The question MUST relate ONLY to the given career or its basic concepts.
 Vary the scenario, action, and context each time.
 
 IMPORTANT NON-REPETITION RULES (STRICT):
@@ -1246,57 +1345,67 @@ IMPORTANT NON-REPETITION RULES (STRICT):
 Previously used questions (DO NOT repeat):
 {previous_quiz_context}
 
-DIFFICULTY RULES (GRADUAL & AGE-APPROPRIATE):
+DIFFICULTY RULES (AGE-APPROPRIATE):
+- Age five to seven:
+  * Very easy and obvious
+  * Simple recognition or everyday understanding
 
-- Age 5–7:
-  * Extremely easy, obvious, and friendly
-  * Focus on recognition or everyday knowledge
-  * No reasoning chains, no tricks, no technical terms
+- Age eight to ten:
+  * Slightly harder but still comfortable
+  * Understanding-based choice, no tricks
 
-- Age 8–10:
-  * Slightly harder than 5–7, but still comfortable
-  * Requires basic thinking or choosing the best option
-  * No advanced logic or subject expertise
+- Age eleven and above:
+  * Moderate difficulty only
+  * Conceptual reasoning or simple application
+  * Still stress-free and child-friendly
 
-- Age 11+:
-  * Moderate difficulty only (NOT advanced)
-  * Requires simple reasoning, understanding, or application
-  * Still solvable by an average child without stress
+CRITICAL CONTENT RESTRICTIONS (MANDATORY):
+- ONLY theoretical or conceptual questions.
+- DO NOT include any:
+  * calculations, formulas, measurements, or arithmetic
+  * numbers, digits, percentages, or quantities
+  * scientific equations, graphs, or numeric data
+- DO NOT include digits anywhere in the question or options.
+- If a numeric or calculation-based idea appears, discard it and generate a theory-only question.
 
-Use these rules to decide the difficulty naturally and progressively.
-Do NOT make the jump in difficulty drastic between age groups.
+CONTENT RULES:
+- Language must be friendly, clear, and age-appropriate.
+- Keep the question under fifty words.
+- Options must contain EXACTLY one correct answer and three plausible incorrect answers.
+- The correct option must be factually and logically correct.
 
-OUTPUT FORMAT (MUST MATCH EXACTLY):
+OUTPUT FORMAT (MUST MATCH EXACTLY; OUTPUT ONLY JSON):
 
 {{
-    "target_parameters": {{
-        "age": {age},
-        "age_slab": "{age_slab}",
-        "career": "{career}",
-        "unique_id": "{unique_id}"
-    }},
-    "question": "Your question here",
-    "options": {{
-        "A": "Option A text",
-        "B": "Option B text",
-        "C": "Option C text",
-        "D": "Option D text"
-    }},
-    "correct_answer": "A",
-    "difficulty_justification": "This question is suitable for the {age_slab} age group because it follows the appropriate difficulty rule for this age by requiring a simple and age-appropriate cognitive task, such as basic recognition, light decision-making, or straightforward reasoning, without introducing unnecessary complexity."
+  "target_parameters": {{
+    "age": {age},
+    "age_slab": "{age_slab}",
+    "career": "{career}",
+    "unique_id": "{unique_id}"
+  }},
+  "question": "Your question here",
+  "options": {{
+    "A": "Option A text",
+    "B": "Option B text",
+    "C": "Option C text",
+    "D": "Option D text"
+  }},
+  "correct_answer": "A or B or C or D",
+  "difficulty_justification": "This question is suitable for the {age_slab} age group because it focuses on conceptual understanding and age-appropriate thinking without calculations."
 }}
 
 STRICT RULES:
 - Output ONLY the JSON object.
-- NO explanations outside JSON.
+- No explanations, reasoning, or extra text outside JSON.
 - One and only one correct answer.
-- Language must be friendly, clear, and age-appropriate.
+- No digits anywhere in the output.
 """
 
 
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            # Using a recent, capable model is recommended for consistent JSON output
+            model="gpt-4.1",
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": prompt}
@@ -1308,6 +1417,7 @@ STRICT RULES:
         raw = response.choices[0].message.content.strip()
 
         # -------- CLEAN OUTPUT --------
+        # Simple cleanup to remove common LLM formatting errors
         cleaned = (
             raw.replace("```", "")
                .replace("json", "")
@@ -1320,46 +1430,47 @@ STRICT RULES:
 
         try:
             data = json.loads(cleaned)
-
-            # Shuffle options
-            options = list(data["options"].values())
-            random.shuffle(options)
-
-            shuffled = dict(zip(["A", "B", "C", "D"], options))
-
-            original_key = data["correct_answer"]
-            original_text = data["options"][original_key]
-            new_correct = next(k for k, v in shuffled.items() if v == original_text)
-
-            data["options"] = shuffled
-            data["correct_answer"] = new_correct
-
+            
+            # --- CODE CHANGE: Discard internal_reasoning field ---
+            # We use this field to force the LLM to think, but don't need it in the final output
+            if "internal_reasoning" in data:
+                del data["internal_reasoning"]
+            
+            # The quiz data is now returned directly as generated by the LLM.
+            # This ensures that data["correct_answer"] points to the correct option text.
             return data
 
-        except Exception:
+        except Exception as e:
+            # Fallback for JSON parsing error
+            print(f"Error parsing JSON from LLM: {e}")
+            career_name = topic if topic is not None else child.default_dream_career
             return {
-                "question": f"What does a {career} usually do?",
+                "question": f"What does a {career_name} usually do?",
                 "options": {
-                    "A": f"Do work related to being a {career}",
+                    "A": f"Do work related to being a {career_name}",
                     "B": "Do unrelated things",
                     "C": "Play all day",
                     "D": "Sleep at work"
                 },
-                "correct_answer": "A"
+                "correct_answer": "A",
+                "difficulty_justification": "Fallback question due to parsing error."
             }
 
-    except Exception:
+    except Exception as e:
+        # Fallback for OpenAI API or other major error
+        print(f"Error calling OpenAI API: {e}")
+        career_name = topic if topic is not None else child.default_dream_career
         return {
-            "question": f"What does a {career} do?",
+            "question": f"What does a {career_name} do?",
             "options": {
-                "A": f"They do work related to being a {career}",
+                "A": f"They do work related to being a {career_name}",
                 "B": "They avoid working",
                 "C": "They do nothing",
                 "D": "They play all day"
             },
-            "correct_answer": "A"
+            "correct_answer": "A",
+            "difficulty_justification": "Fallback question due to API error."
         }
-
 import re
 
 def moderate_message(message: str) -> dict:
@@ -1529,7 +1640,7 @@ Ensure every reply is context-aware, varied, and relevant to what the child actu
 
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4.1",
             messages=messages,
             max_tokens=100,
             temperature=0.7
@@ -1564,7 +1675,7 @@ def evaluate_chat_quality(child: ChildDB, message: str, response: str) -> tuple[
     """
     try:
         eval_response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4.1",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=100,
             temperature=0.5
@@ -1605,44 +1716,76 @@ def send_good_chat_email(to_email: str, child_name: str, good_chats: int):
         print(f"Error sending good chat email: {e}")
         return False
 
-@app.post("/kids/v2/initiate-signup",tags=["signup"])
-async def initiate_signup(request: SignupRequest):
+def is_parent_email_registered(db: Session, email: str) -> bool:
+    return db.query(ParentDB).filter(
+        ParentDB.email == email
+    ).first() is not None
+
+
+@app.post("/kids/v2/initiate-signup", tags=["signup"])
+async def initiate_signup(request: SignupRequest, db: Session = Depends(get_db)):
     """
     Store signup data and send OTP to parent email
     """
-    # Validate date of birth
+
+    # ---------------- DOB VALIDATION ----------------
     try:
         dob = datetime.strptime(request.dob, '%Y-%m-%d').date()
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid date format. Use YYYY-MM-DD"
+        )
 
-    # Validate child age (must be 5-15 years old)
+    # ---------------- AGE VALIDATION ----------------
     child_age = calculate_age(dob)
     if child_age < 5:
-        raise HTTPException(status_code=400, detail="Child must be at least 5 years old to signup")
+        raise HTTPException(
+            status_code=400,
+            detail="Child must be at least 5 years old to signup"
+        )
     if child_age > 15:
-        raise HTTPException(status_code=400, detail="Child must be 15 years old or younger to signup")
+        raise HTTPException(
+            status_code=400,
+            detail="Child must be 15 years old or younger to signup"
+        )
 
-    # Validate child password
+    # ---------------- PASSWORD VALIDATION ----------------
     is_valid, password_message = validate_password(request.password)
     if not is_valid:
         raise HTTPException(status_code=400, detail=password_message)
 
-    # Validate parent password
     is_valid, password_message = validate_password(request.parent_password)
     if not is_valid:
-        raise HTTPException(status_code=400, detail=f"Parent {password_message}")
-    
-    # Send OTP
+        raise HTTPException(
+            status_code=400,
+            detail=f"Parent {password_message}"
+        )
+
+    # ---------------- EMAIL ALREADY REGISTERED CHECK (🔥 FIX) ----------------
+    if is_parent_email_registered(db, request.parent_email):
+        raise HTTPException(
+            status_code=409,
+            detail="This parent email is already registered. Please login instead."
+        )
+
+    # ---------------- SEND OTP ----------------
     otp = generate_otp()
+
     if send_otp_email(request.parent_email, otp, purpose="signup"):
         otp_store[otp] = time.time()
         signup_data_store[otp] = (request.dict(), time.time())
         email_to_otp[request.parent_email] = otp
         otp_to_email[otp] = request.parent_email
-        return {"message": "Signup data stored and OTP sent to your email"}
-    else:
-        raise HTTPException(status_code=500, detail="Failed to send OTP")
+
+        return {
+            "message": "Signup data stored and OTP sent to your email"
+        }
+
+    raise HTTPException(
+        status_code=500,
+        detail="Failed to send OTP"
+    )
 
 @app.post("/kids/v2/resend-otp", tags = ["signup"])
 async def resend_otp(request: ResendOtpRequest, db: Session = Depends(get_db)):
@@ -1678,6 +1821,32 @@ async def resend_otp(request: ResendOtpRequest, db: Session = Depends(get_db)):
         return {"message": "OTP resent to your email"}
     else:
         raise HTTPException(status_code=500, detail="Failed to resend OTP")
+
+def bootstrap_child_content(child: ChildDB, db: Session):
+    """
+    Generate initial content for a newly signed-up child
+    so no API ever returns empty content.
+    """
+    now = get_ist_now()
+
+    # -------- STORY --------
+    story = generate_story(child)
+    child.last_story_generated = now
+    child.last_story_content = json.dumps(story)
+
+    # -------- JOKE --------
+    joke = generate_joke(child)
+    child.last_joke_generated = now
+    child.last_joke_content = json.dumps(joke)
+
+    # -------- QUESTION --------
+    question = generate_question(child)
+    child.last_question_generated = now
+    child.last_question_content = json.dumps(question)
+    child.last_question_answered = False
+    child.last_question_credited_at = None
+
+    db.add(child)
 
 
 @app.post("/kids/v2/complete-signup", response_model=SignupResponse, tags=["signup"])
@@ -1817,6 +1986,14 @@ async def complete_signup(request: CompleteSignupRequest, db: Session = Depends(
         initialize_spell_progress_for_child(db, child.id)
         initialize_whoami_progress_for_child(db, child.id)
 
+                # -----------------------------
+        # 🚀 BOOTSTRAP DAILY CONTENT (NEW)
+        # -----------------------------
+        bootstrap_child_content(child, db)
+        db.commit()
+        db.refresh(child)
+
+
         # -----------------------------
         # SUCCESS RESPONSE
         # -----------------------------
@@ -1889,148 +2066,181 @@ class GenerateStoryRequest(BaseModel):
 
 import logging  # Add this import at the top if not already present
 
-@app.post("/kids/v2/generate-story", tags=["Functionalities"])
-async def generate_story_endpoint(request: GenerateStoryRequest, db: Session = Depends(get_db)):
+def is_same_ist_day(dt1, dt2):
+    return dt1.date() == dt2.date()
 
+
+@app.post("/kids/v2/generate-story", tags=["Functionalities"])
+async def generate_story_endpoint(
+    request: GenerateStoryRequest,
+    db: Session = Depends(get_db)
+):
     child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
     if not child:
         raise HTTPException(status_code=404, detail="Child not found")
 
-    now = get_ist_now()
-
-    # --- RETURN OLD STORY IF WITHIN 24 HOURS ---
-    if child.last_story_generated and (now - child.last_story_generated) < timedelta(hours=24):
-
-        # old stored content is STRING, so convert back to dict
-        old_story = json.loads(child.last_story_content)
-
-        return {
-            "message": "Story retrieved successfully",
-            "title": old_story.get("title", ""),
-            "story": old_story.get("story", ""),
-            "moral": old_story.get("moral", ""),
-            "generated_at": child.last_story_generated.isoformat()
+    # -------------------------------------------------
+    # STEP 1: FETCH LAST AVAILABLE STORY (NO HARD FAIL)
+    # -------------------------------------------------
+    if child.last_story_content:
+        story = json.loads(child.last_story_content)
+    else:
+        # Absolute first-time safety fallback (rare)
+        story = {
+            "title": "",
+            "story": "",
+            "moral": ""
         }
 
-    # --- GENERATE NEW STORY ---
-    story = generate_story(child)   # THIS RETURNS A DICTIONARY NOW
+    now = get_ist_now()
+    today = now.date()
 
-    child.last_story_generated = now
-    child.last_story_content = json.dumps(story)   # save as JSON string
-
-    # Reset daily credits if date changed
+    # -------------------------------------------------
+    # STEP 2: RESET DAILY CREDITS IF DATE CHANGED
+    # -------------------------------------------------
     reset_daily_credits_if_needed(child, db)
 
-    # ---- CHECK LIMIT (daily_credits max = 15) ----
-    if child.daily_credits < 15:
-        # Award credits
-        child.credits_story = (child.credits_story or 0) + 2
-        child.total_credits = (child.total_credits or 0) + 2
-        old_daily = child.daily_credits or 0
-        child.daily_credits = min(15, old_daily + 2)
+    # -------------------------------------------------
+    # STEP 3: AWARD CREDITS ONLY ON FIRST VIEW PER DAY
+    # -------------------------------------------------
+    credits_earned = 0
 
-        db.add(CreditsHistory(
-            child_id=child.id,
-            activity="Story",
-            credits_earned=2,
-            credits_lost=0,
-            total_credits=child.total_credits
-        ))
+    if child.last_story_rewarded_date != today:
+        if child.daily_credits < 15:
+            child.credits_story = (child.credits_story or 0) + 2
+            child.total_credits = (child.total_credits or 0) + 2
+            child.daily_credits = min(15, (child.daily_credits or 0) + 2)
+            credits_earned = 2
 
-    else:
-        db.add(CreditsHistory(
-            child_id=child.id,
-            activity="Story (daily limit reached)",
-            credits_earned=0,
-            credits_lost=0,
-            total_credits=child.total_credits
-        ))
+            db.add(CreditsHistory(
+                child_id=child.id,
+                activity="Story",
+                credits_earned=2,
+                credits_lost=0,
+                total_credits=child.total_credits
+            ))
+        else:
+            db.add(CreditsHistory(
+                child_id=child.id,
+                activity="Story (daily limit reached)",
+                credits_earned=0,
+                credits_lost=0,
+                total_credits=child.total_credits
+            ))
 
-    db.commit()
+        child.last_story_rewarded_date = today
+        db.add(child)
+        db.commit()
 
-    return {
+    # -------------------------------------------------
+    # STEP 4: BUILD RESPONSE (NO NULL NOTE)
+    # -------------------------------------------------
+    response = {
         "message": "Story retrieved successfully",
-        "title": story["title"],
-        "story": story["story"],
-        "moral": story["moral"],
-        "credits_earned": 2 if child.daily_credits <= 15 else 0,
-        "generated_at": now.isoformat()
+        "title": story.get("title", ""),
+        "story": story.get("story", ""),
+        "moral": story.get("moral", ""),
+        "credits_earned": credits_earned,
+        "generated_at": (
+            child.last_story_generated.isoformat()
+            if child.last_story_generated
+            else None
+        )
     }
+
+    if child.last_story_generated and child.last_story_generated.date() != today:
+        response["note"] = "New story will be available at 12:00 AM"
+
+    return response
+
 
 class GenerateJokeRequest(BaseModel):
     child_id: int
 
 import json
-
 @app.post("/kids/v2/generate-joke", tags=["Functionalities"])
-async def generate_joke_endpoint(request: GenerateJokeRequest, db: Session = Depends(get_db)):
-
+async def generate_joke_endpoint(
+    request: GenerateJokeRequest,
+    db: Session = Depends(get_db)
+):
     child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
     if not child:
-        raise HTTPException(404, "Child not found")
+        raise HTTPException(status_code=404, detail="Child not found")
 
     now = get_ist_now()
+    today = now.date()
 
-    # --- RETURN OLD JOKE IF WITHIN 24 HOURS ---
-    if child.last_joke_generated and (now - child.last_joke_generated) < timedelta(hours=24):
+    # -------------------------------------------------
+    # STEP 1: ALWAYS RETURN LAST STORED JOKE (NO FAIL)
+    # -------------------------------------------------
+    joke = {"question": "", "answer": ""}
 
-        # last_joke_content is stored as JSON string -> convert back
+    if child.last_joke_content:
         try:
-            old_joke = json.loads(child.last_joke_content)
-        except:
-            # fallback if old storage format was plain text
-            old_joke = {
+            joke = json.loads(child.last_joke_content)
+        except Exception:
+            joke = {
                 "question": child.last_joke_content,
                 "answer": ""
             }
 
-        return {
-            "message": "Joke retrieved successfully",
-            "question": old_joke.get("question", ""),
-            "answer": old_joke.get("answer", ""),
-            "generated_at": child.last_joke_generated.isoformat()
-        }
-
-    # --- GENERATE NEW JOKE ---
-    joke = generate_joke(child)  # joke is now a dict with question + answer
-
-    child.last_joke_generated = now
-    child.last_joke_content = json.dumps(joke)  # save clean JSON string
-
+    # -------------------------------------------------
+    # STEP 2: RESET DAILY CREDITS IF DATE CHANGED
+    # -------------------------------------------------
     reset_daily_credits_if_needed(child, db)
 
-    # ---- CHECK DAILY CREDIT LIMIT ----
-    if child.daily_credits < 15:
-        child.credits_joke = (child.credits_joke or 0) + 2
-        child.total_credits = (child.total_credits or 0) + 2
-        old_daily = child.daily_credits or 0
-        child.daily_credits = min(15, old_daily + 2)
+    # -------------------------------------------------
+    # STEP 3: AWARD CREDITS ONLY ON FIRST VIEW PER DAY
+    # -------------------------------------------------
+    credits_earned = 0
 
-        db.add(CreditsHistory(
-            child_id=child.id,
-            activity="Joke",
-            credits_earned=2,
-            credits_lost=0,
-            total_credits=child.total_credits
-        ))
-    else:
-        db.add(CreditsHistory(
-            child_id=child.id,
-            activity="Joke (daily limit reached)",
-            credits_earned=0,
-            credits_lost=0,
-            total_credits=child.total_credits
-        ))
+    if child.last_joke_rewarded_date != today:
+        if child.daily_credits < 15:
+            child.credits_joke = (child.credits_joke or 0) + 2
+            child.total_credits = (child.total_credits or 0) + 2
+            child.daily_credits = min(15, (child.daily_credits or 0) + 2)
+            credits_earned = 2
 
-    db.commit()
+            db.add(CreditsHistory(
+                child_id=child.id,
+                activity="Joke",
+                credits_earned=2,
+                credits_lost=0,
+                total_credits=child.total_credits
+            ))
+        else:
+            db.add(CreditsHistory(
+                child_id=child.id,
+                activity="Joke (daily limit reached)",
+                credits_earned=0,
+                credits_lost=0,
+                total_credits=child.total_credits
+            ))
 
-    return {
+        child.last_joke_rewarded_date = today
+        db.add(child)
+        db.commit()
+
+    # -------------------------------------------------
+    # STEP 4: RESPONSE (TRANSPARENT & SAFE)
+    # -------------------------------------------------
+    response = {
         "message": "Joke retrieved successfully",
-        "question": joke["question"],
-        "answer": joke["answer"],
-        "generated_at": now.isoformat(),
-        "credits_earned": 2 if child.daily_credits <= 15 else 0
+        "question": joke.get("question", ""),
+        "answer": joke.get("answer", ""),
+        "credits_earned": credits_earned,
+        "generated_at": (
+            child.last_joke_generated.isoformat()
+            if child.last_joke_generated
+            else None
+        )
     }
+
+    # Inform user ONLY if joke is old
+    if child.last_joke_generated and child.last_joke_generated.date() != today:
+        response["note"] = "New joke will be available at 12:00 AM"
+
+    return response
 
 class GenerateQuestionRequest(BaseModel):
     child_id: int
@@ -2040,56 +2250,151 @@ class GenerateQuizRequest(BaseModel):
     topic: str
 
 from datetime import datetime, timedelta
+@app.post("/kids/v2/generate-question", tags=["Functionalities"])
+async def generate_question_endpoint(
+    request: GenerateQuestionRequest,
+    db: Session = Depends(get_db)
+):
+    child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
+    if not child:
+        raise HTTPException(status_code=404, detail="Child not found")
 
-@app.post("/kids/v2/generate-question",tags=["Functionalities"])
-async def generate_question_endpoint(request: GenerateQuestionRequest, db: Session = Depends(get_db)):
-    """Generate a new question for the child or return existing if within 24 hours """
+    # -------------------------------------------------
+    # ENSURE QUESTION EXISTS (NEVER DELETE OLD)
+    # -------------------------------------------------
+    if not child.last_question_content or not child.last_question_generated:
+        question_data = generate_question(child)
+
+        child.last_question_generated = get_ist_now()
+        child.last_question_content = json.dumps(question_data)
+        child.last_question_answered = False
+        child.last_question_credited_at = None
+
+        db.commit()
+    else:
+        question_data = json.loads(child.last_question_content)
+
+    response = {
+        "message": "Daily question retrieved successfully",
+        "question": question_data.get("question", ""),
+        "options": question_data.get("options", {}),
+        "correct_answer": question_data.get("correct_answer", ""),
+        "generated_at": child.last_question_generated.isoformat(),
+    }
+
+    today = get_ist_now().date()
+
+    if child.last_question_generated.date() != today:
+        response["note"] = "New question will be available at 12:00 AM ⏰"
+    elif child.last_question_answered:
+        response["note"] = "You have already answered today’s question 😊. Please come back tomorrow after 12am."
+
+    return response
+
+class SubmitQuestionAnswerRequest(BaseModel):
+    child_id: int
+    selected_answer: str  # A, B, C, or D
+
+
+@app.post("/kids/v2/submit-question-answer", tags=["Functionalities"])
+async def submit_question_answer(
+    request: SubmitQuestionAnswerRequest,
+    db: Session = Depends(get_db)
+):
+    """Submit daily question answer. Credits awarded only once per day on first attempt."""
+
     child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
     if not child:
         raise HTTPException(status_code=404, detail="Child not found")
 
     now = get_ist_now()
+    today = now.date()
 
-    # Convert stored datetime string (if any) to datetime object safely
-    last_generated = child.last_question_generated
-    if isinstance(last_generated, str):
-        try:
-            last_generated = datetime.fromisoformat(last_generated)
-        except Exception:
-            last_generated = None
+    # -------------------------------------------------
+    # LOAD QUESTION (NO HARD FAIL)
+    # -------------------------------------------------
+    if not child.last_question_content:
+        raise HTTPException(status_code=400, detail="No question available")
 
-    # If already answered within 24 hours → block
-    if (
-        last_generated
-        and (now - last_generated) < timedelta(hours=24)
-        and child.last_question_answered is True
-    ):
+    question_data = json.loads(child.last_question_content)
+
+    # -------------------------------------------------
+    # 🚫 BLOCK YESTERDAY QUESTION
+    # -------------------------------------------------
+    if not child.last_question_generated or child.last_question_generated.date() != today:
         return {
-            "message": f"For now, question limit exceeded, {child.username}!    ",
-            "question": None,
-            "generated_at": last_generated.isoformat() if last_generated else None
+            "message": "This question has expired ⏰",
+            "question": question_data.get("question", ""),
+            "options": question_data.get("options", {}),
+            "explanation": "A new question will be available at 12:00 AM.",
+            "credits_awarded": 0,
+            "total_credits": child.total_credits
         }
 
-    # Generate new question if no previous OR 24 hour passed
-    if not last_generated or (now - last_generated) >= timedelta(hours=24):
-        question_data = generate_question(child)
-        child.last_question_generated = now
-        child.last_question_content = json.dumps(question_data)
-        child.last_question_answered = False
-        db.commit()
-        generated_at = now.isoformat()
-    else:
-        # Within 24 hours → return existing question
-        question_data = json.loads(child.last_question_content)
-        generated_at = last_generated.isoformat()
+    # -------------------------------------------------
+    # PARSE ANSWER
+    # -------------------------------------------------
+    correct_answer = question_data.get("correct_answer", "").upper()
+    selected_answer = request.selected_answer.upper()
+    is_correct = selected_answer == correct_answer  # ✅ strict boolean
+
+    age = calculate_age(child.dob)
+    age_slab = get_age_slab(age)
+
+    explanation = get_explanation_for_answer(
+        is_correct, age_slab, correct_answer
+    )
+
+    # -------------------------------------------------
+    # RESET DAILY CREDITS IF DATE CHANGED
+    # -------------------------------------------------
+    reset_daily_credits_if_needed(child, db)
+
+    # -------------------------------------------------
+    # 🎯 CREDIT LOGIC — SAME AS STORY ENDPOINT
+    # -------------------------------------------------
+    credits_awarded = 0
+
+    if child.last_question_rewarded_date != today:
+        if is_correct and child.daily_credits < 15:
+            child.credits_question = (child.credits_question or 0) + 2
+            child.total_credits = (child.total_credits or 0) + 2
+            child.daily_credits = min(15, (child.daily_credits or 0) + 2)
+            credits_awarded = 2
+
+            db.add(CreditsHistory(
+                child_id=child.id,
+                activity="Daily Question",
+                credits_earned=2,
+                credits_lost=0,
+                total_credits=child.total_credits
+            ))
+        else:
+            db.add(CreditsHistory(
+                child_id=child.id,
+                activity="Daily Question (no credit)",
+                credits_earned=0,
+                credits_lost=0,
+                total_credits=child.total_credits
+            ))
+
+        child.last_question_rewarded_date = today
+
+    # -------------------------------------------------
+    # MARK QUESTION AS ANSWERED (UI PURPOSE ONLY)
+    # -------------------------------------------------
+    child.last_question_answered = True
+    db.add(child)
+    db.commit()
 
     return {
-        "message": "Question retrieved successfully!",
-        "question": question_data,
-        "generated_at": generated_at
+        "message": "Answer submitted successfully 🎉",
+        "is_correct": is_correct,
+        "explanation": explanation,
+        "credits_awarded": credits_awarded,
+        "total_credits": child.total_credits,
+        "note": "Come back tomorrow after 12:00 AM for a new question!"
     }
-
-
 
 @app.post("/kids/v2/generate-quiz", tags=["Functionalities"])
 async def generate_quiz_endpoint(
@@ -2182,88 +2487,6 @@ async def generate_quiz_endpoint(
             "correct_answer": new_question["correct_answer"]
         },
         "generated_at": now.isoformat(),
-    }
-
-class SubmitQuestionAnswerRequest(BaseModel):
-    child_id: int
-    selected_answer: str  # A, B, C, or D
-
-
-# NEW : **************************************07/11***************************************************************************
-@app.post("/kids/v2/submit-question-answer", tags=["Functionalities"])
-async def submit_question_answer(request: SubmitQuestionAnswerRequest, db: Session = Depends(get_db)):
-    """Submit a question answer and update credits if correct on first attempt, apply daily credit limits."""
-    
-    child = db.query(ChildDB).filter(ChildDB.id == request.child_id).first()
-    if not child:
-        raise HTTPException(status_code=404, detail="Child not found")
-
-    # Prevent multiple attempts for the same day
-    if child.last_question_answered:
-        return {
-            "message": f"You already answered today’s question {child.username}!",
-            "is_correct": None,
-            "explanation": None,
-            "credits_awarded": 0,
-            "total_credits": child.total_credits
-        }
-
-    # Ensure a question exists
-    if not child.last_question_content:
-        raise HTTPException(status_code=400, detail="No question generated yet")
-
-    # Parse question info
-    question_data = json.loads(child.last_question_content)
-    correct_answer = question_data.get("correct_answer", "").upper()
-
-    is_correct = request.selected_answer.upper() == correct_answer
-    age = calculate_age(child.dob)
-    age_slab = get_age_slab(age)
-
-    explanation = get_explanation_for_answer(is_correct, age_slab, correct_answer)
-
-    credits_awarded = 0
-
-    # First-attempt logic
-    q_generated_time = child.last_question_generated
-    first_attempt = not child.last_question_credited_at or child.last_question_credited_at < q_generated_time
-
-    # Reset daily credits if date changed
-    reset_daily_credits_if_needed(child, db)
-
-    if is_correct and first_attempt:
-        if child.daily_credits < 15:
-            # Award full credits
-            child.daily_credits = min(15, (child.daily_credits or 0) + 2)
-            child.credits_question = (child.credits_question or 0) + 2
-            child.total_credits = (child.total_credits or 0) + 2
-            credits_awarded = 2
-            child.last_question_credited_at = q_generated_time
-        else:
-            # Daily limit reached → no credits
-            explanation = "Daily credit limit reached! Try again tomorrow."
-            credits_awarded = 0
-
-    # Mark question as answered for today
-    child.last_question_answered = True
-
-    # Store history regardless of credit earned
-    db.add(CreditsHistory(
-        child_id=child.id,
-        activity="question",
-        credits_earned=credits_awarded,
-        credits_lost=0,
-        total_credits=child.total_credits or 0
-    ))
-
-    db.commit()
-
-    return {
-        "message": "Answer submitted successfully",
-        "is_correct": is_correct,
-        "explanation": explanation,
-        "credits_awarded": credits_awarded,
-        "total_credits": child.total_credits
     }
 
 
@@ -4217,74 +4440,92 @@ def submit_answer(request: AnswerRequest, child_id: int, db: Session = Depends(g
 
 
 # GAME PROGRESS ENDPOINT **************************************************************************************************************
+# GAME PROGRESS ENDPOINT **************************************************************************************************************
 @app.get("/kids/v2/game/progress/{child_id}", tags=["BRAINY FRUITS"])
 def get_game_progress(child_id: int, db: Session = Depends(get_db)):
 
-    progress_records = db.query(GameProgress).filter(GameProgress.child_id == child_id).all()
+    progress_records = (
+        db.query(GameProgress)
+        .filter(GameProgress.child_id == child_id)
+        .all()
+    )
+
+    TOTAL_LEVELS = 100
+
+    # --------------------------------------------------
+    # HANDLE FIRST-TIME CHILD (NO PROGRESS YET)
+    # --------------------------------------------------
     if not progress_records:
         return {
             "username": None,
             "child_id": child_id,
             "completed_levels": [],
             "current_level": 1,
-            "next_level": 1,
+            "next_level": 2,
             "points_per_level": {},
-            "total_levels": 100,
+            "total_levels": TOTAL_LEVELS,
             "Next_Unlocked_Level": 1
         }
 
     child = db.query(ChildDB).filter(ChildDB.id == child_id).first()
     username = child.username if child else None
 
-    TOTAL_LEVELS = 100
+    # --------------------------------------------------
+    # COMPLETED LEVELS & POINTS
+    # --------------------------------------------------
+    completed_set = {p.level for p in progress_records if p.status == "Completed"}
+    completed_levels = sorted(list(completed_set))
 
-    # All completed levels
-    completed_levels = [p.level for p in progress_records if p.status == "Completed"]
+    points_summary = {
+        p.level: p.score for p in progress_records if p.status == "Completed"
+    }
 
-    # Latest completed
-    latest_completed = (
-        db.query(GameProgress)
-        .filter(GameProgress.child_id == child_id, GameProgress.status == "Completed")
-        .order_by(desc(GameProgress.last_updated))
-        .first()
-    )
+    # --------------------------------------------------
+    # DETERMINE CURRENT LEVEL = FIRST NOT COMPLETED
+    # --------------------------------------------------
+    current_level = 1
+    for lvl in range(1, TOTAL_LEVELS + 1):
+        if lvl not in completed_set:
+            current_level = lvl
+            break
+    else:
+        # All completed
+        current_level = TOTAL_LEVELS
 
-    # Latest failed
+    # --------------------------------------------------
+    # LAST FAILED ATTEMPT (IF ANY) — RETRY SAME LEVEL
+    # Only matters if the failed level is the current playable level
+    # --------------------------------------------------
     latest_failed = (
         db.query(GameProgress)
-        .filter(GameProgress.child_id == child_id, GameProgress.temp_status == "Failed")
+        .filter(
+            GameProgress.child_id == child_id,
+            GameProgress.temp_status == "Failed"
+        )
         .order_by(desc(GameProgress.temp_last_updated))
         .first()
     )
 
-    # -----------------------------
-    #   Determine CURRENT LEVEL
-    # -----------------------------
-    if latest_failed and (not latest_completed or latest_failed.temp_last_updated > latest_completed.last_updated):
-        current_level = latest_failed.level  # child failed this level, so this is the active one
-        failure_mode = True
-    elif latest_completed:
-        current_level = latest_completed.level
-        failure_mode = False
+    if latest_failed and latest_failed.level == current_level:
+        current_level = latest_failed.level  # retry same level
+
+    # --------------------------------------------------
+    # NEXT LEVEL MUST ALWAYS INCREASE (unless last)
+    # --------------------------------------------------
+    if current_level < TOTAL_LEVELS:
+        next_level = current_level + 1
     else:
-        current_level = 1
-        failure_mode = False
+        next_level = None
 
-    # -----------------------------
-    #   Determine NEXT LEVEL
-    # -----------------------------
-    if failure_mode:
-        # Child must replay the same level
-        next_level = current_level
-    else:
-        # Completed successfully → next level unlocked
-        next_level = current_level + 1 if current_level < TOTAL_LEVELS else TOTAL_LEVELS
-
-    # Ensure points summary
-    points_summary = {p.level: p.score for p in progress_records if p.status == "Completed"}
-
-    highest_completed = max(completed_levels, default=0)
-    next_unlocked_level = highest_completed + 1 if highest_completed < TOTAL_LEVELS else "All levels completed!"
+    # --------------------------------------------------
+    # NEXT UNLOCKED LEVEL
+    # --------------------------------------------------
+    highest_completed = max(completed_set, default=0)
+    next_unlocked_level = (
+        highest_completed + 1
+        if highest_completed < TOTAL_LEVELS
+        else "All levels completed!"
+    )
 
     return {
         "username": username,
@@ -4294,7 +4535,7 @@ def get_game_progress(child_id: int, db: Session = Depends(get_db)):
         "next_level": next_level,
         "points_per_level": points_summary,
         "total_levels": TOTAL_LEVELS,
-        "Next_Unlocked_Level": next_unlocked_level
+        
     }
 
 # GAME REPLAY ENDPOINT******************************************************************************************************************
@@ -4624,7 +4865,7 @@ Now generate the puzzle at difficulty: {difficulty}
     for attempt in range(max_retries + 1):
         try:
             resp = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4.1",
                 messages=[
                     {"role": "system", "content": "You are a creative, child-friendly puzzle generator."},
                     {"role": "user", "content": prompt}
@@ -5245,7 +5486,11 @@ def submit_answer(req: SubmitAnswerRequest, child_id : int, db: Session = Depend
 # GAME PROGRESS ENDPOINT **************************************************************************************************************
 @app.get("/kids/v2/game/progress/spell/{child_id}", tags=["SPELL BREAKER"])
 def get_spellbreaker_progress(child_id: int, db: Session = Depends(get_db)):
-    progress_records = db.query(GameProgress_SPELL).filter(GameProgress_SPELL.child_id == child_id).all()
+    progress_records = (
+        db.query(GameProgress_SPELL)
+        .filter(GameProgress_SPELL.child_id == child_id)
+        .all()
+    )
     if not progress_records:
         raise HTTPException(status_code=404, detail="No progress found for this child.")
 
@@ -5254,54 +5499,59 @@ def get_spellbreaker_progress(child_id: int, db: Session = Depends(get_db)):
 
     TOTAL_LEVELS = 100
 
-    # All completed levels
-    completed_levels = [p.level for p in progress_records if p.status == "Completed"]
-
-    #Points Summary
-    points_summary = {p.level: p.score for p in progress_records if p.status == "Completed"}
-    # Fetch the most recent completed record
-    latest_completed = (
-        db.query(GameProgress_SPELL)
-        .filter(GameProgress_SPELL.child_id == child_id, GameProgress_SPELL.status == "Completed")
-        .order_by(desc(GameProgress_SPELL.last_updated))
-        .first()
+    # --------------------------------------------------
+    # COMPLETED LEVELS & POINTS
+    # --------------------------------------------------
+    completed_levels = sorted(
+        [p.level for p in progress_records if p.status == "Completed"]
     )
 
-    # Fetch the most recent failed record
+    points_summary = {
+        p.level: p.score for p in progress_records if p.status == "Completed"
+    }
+
+    highest_completed = completed_levels[-1] if completed_levels else 0
+
+    # --------------------------------------------------
+    # LAST FAILED ATTEMPT (IF ANY)
+    # --------------------------------------------------
     latest_failed = (
         db.query(GameProgress_SPELL)
-        .filter(GameProgress_SPELL.child_id == child_id, GameProgress_SPELL.temp_status == "Failed")
+        .filter(
+            GameProgress_SPELL.child_id == child_id,
+            GameProgress_SPELL.temp_status == "Failed"
+        )
         .order_by(desc(GameProgress_SPELL.temp_last_updated))
         .first()
     )
 
-    current_level = 1  # default
-
-    # Determine current level
-    if latest_completed and latest_failed:
-        if latest_failed.temp_last_updated > latest_completed.last_updated:
-            current_level = latest_failed.level
-        else:
-            current_level = latest_completed.level
-    elif latest_failed:
+    # --------------------------------------------------
+    # CURRENT LEVEL LOGIC (FIXED)
+    # --------------------------------------------------
+    if latest_failed and latest_failed.level == highest_completed + 1:
+        # Retry failed level
         current_level = latest_failed.level
-    elif latest_completed:
-        current_level = latest_completed.level
-
-    # Determine next level
-    if latest_failed and (not latest_completed or latest_failed.temp_last_updated > latest_completed.last_updated):
-        if latest_failed.status != "Completed":
-            next_level = latest_failed.level
-        else:
-            next_level = latest_failed.level + 1
     else:
-        next_level = (latest_completed.level + 1) if latest_completed and latest_completed.level < TOTAL_LEVELS else 1
+        # Move to next level after highest completed
+        current_level = highest_completed + 1
 
+    # Cap current level
+    if current_level > TOTAL_LEVELS:
+        current_level = TOTAL_LEVELS
 
+    # --------------------------------------------------
+    # NEXT LEVEL LOGIC
+    # --------------------------------------------------
+    next_level = current_level + 1 if current_level < TOTAL_LEVELS else None
 
-    # New Logic: Next Unlocked Level
-    highest_completed = max(completed_levels, default=0)
-    next_unlocked_level = highest_completed + 1 if highest_completed < TOTAL_LEVELS else "All levels completed!"
+    # --------------------------------------------------
+    # NEXT UNLOCKED LEVEL
+    # --------------------------------------------------
+    next_unlocked_level = (
+        highest_completed + 1
+        if highest_completed < TOTAL_LEVELS
+        else "All levels completed!"
+    )
 
     return {
         "username": username,
@@ -5311,9 +5561,8 @@ def get_spellbreaker_progress(child_id: int, db: Session = Depends(get_db)):
         "next_level": next_level,
         "points_per_level": points_summary,
         "total_levels": TOTAL_LEVELS,
-        "Next_Unlocked_Level": next_unlocked_level
+        
     }
-
 
 # FIXED REPLAY ENDPOINT *************************************************************************************************************
 @app.get("/kids/v2/game/replay_level/spell/{child_id}", tags=["SPELL BREAKER"])
@@ -6592,6 +6841,123 @@ def next_level(child_id: int, db: Session = Depends(get_db)):
         correct_answer="",
         fact=""
     )
+
+
+# --------------------------------------------------
+# SCHEDULER SETUP (IST)
+# --------------------------------------------------
+scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
+
+# --------------------------------------------------
+# DAILY REGEN FUNCTION
+# --------------------------------------------------
+def regenerate_daily_content():
+    db = SessionLocal()
+    now = get_ist_now()
+
+    try:
+        children = db.query(ChildDB).filter(ChildDB.blocked == False).all()
+
+        for child in children:
+
+            # -------- STORY --------
+            story = generate_story(child)
+            child.last_story_generated = now
+            child.last_story_content = json.dumps(story)
+
+            # -------- JOKE --------
+            joke = generate_joke(child)
+            child.last_joke_generated = now
+            child.last_joke_content = json.dumps(joke)
+
+            # -------- QUESTION --------
+            question = generate_question(child)
+            child.last_question_generated = now
+            child.last_question_content = json.dumps(question)
+            child.last_question_answered = False
+            child.last_question_credited_at = None
+
+        db.commit()
+        logging.info("✅ Daily content regenerated successfully at 12:00 AM IST")
+
+    except Exception as e:
+        db.rollback()
+        logging.error("❌ Daily scheduler failed", exc_info=True)
+
+    finally:
+        db.close()
+
+
+def bootstrap_daily_content():
+    """
+    Run daily content generation once at startup
+    to ensure DB is never empty.
+    """
+    print("🚀 BOOTSTRAP: Generating daily content on startup")
+    regenerate_daily_content()
+
+# --------------------------------------------------
+# CRON JOB (12:00 AM IST)
+# --------------------------------------------------
+# from apscheduler.triggers.interval import IntervalTrigger
+
+# scheduler.add_job(
+#     regenerate_daily_content,
+#     trigger=IntervalTrigger(minutes=1),  # 🔥 runs every 1 minute
+#     id="daily_content_regeneration",
+#     replace_existing=True
+# )
+
+# print("🧪 TEST MODE: Daily content regenerating every 1 minute")
+
+from apscheduler.triggers.cron import CronTrigger
+
+scheduler.add_job(
+    regenerate_daily_content,
+    trigger=CronTrigger(hour=0, minute=0),
+    id="daily_content_regeneration",
+    replace_existing=True
+)
+
+print("🕛 PRODUCTION MODE: Daily content regenerates at 12:00 AM IST")
+
+
+scheduler.add_job(
+    lambda: print("⏱ Scheduler is alive"),
+    trigger="interval",
+    seconds=30,
+    id="heartbeat",
+    replace_existing=True
+)
+
+# --------------------------------------------------
+# START SCHEDULER ON FASTAPI STARTUP
+# (Safe for --reload, avoids double execution)
+# --------------------------------------------------
+@app.on_event("startup")
+def start_daily_scheduler():
+    # Prevent double run with --reload
+    if multiprocessing.current_process().name != "MainProcess":
+        print("⛔ Scheduler not started in child process")
+        return
+
+    # --------------------------------------------------
+    # BOOTSTRAP RUN (ONCE AT STARTUP)
+    # --------------------------------------------------
+    bootstrap_daily_content()
+
+    # --------------------------------------------------
+    # START SCHEDULER
+    # --------------------------------------------------
+    if not scheduler.running:
+        scheduler.start()
+
+        for job in scheduler.get_jobs():
+            print(f"🧪 Job {job.id} next run at {job.next_run_time}")
+
+        print("🕛 Daily scheduler started (IST)")
+
+
 
 
 if __name__ == "__main__":

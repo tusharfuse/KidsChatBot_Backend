@@ -11,3 +11,5 @@ tzdata==2024.1
 httpx==0.24.0
 elevenlabs
 psycopg2
+sympy
+apscheduler
