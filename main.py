@@ -149,7 +149,7 @@ VALID_CAREERS = set([
     # Food & Hospitality
     "chef", "baker", "food scientist", "restaurant owner", "chocolatier",
 
-    # Trade / Skills
+    # Trade
     "mechanic", "electrician", "carpenter", "plumber",
     "technician", "auto engineer",
 
@@ -5797,6 +5797,7 @@ class FunnyWhoami(Base):
 
 
 Base.metadata.create_all(bind=engine)
+STATIC_BASE_URL = "https://semantic.onesmarter.com/static"
 
 # new logic ithe static folder mount karayache baki hote baki***********************************
 BASE_DIR = Path(__file__).resolve().parent
@@ -5975,46 +5976,43 @@ def fetch_questions_for_level(db: Session, level: int, child_id: int = None):
 
     # ------------------ SLOT 1 (Animals) -----------------------
     if slot == "slot1":
+
         if age_slab == "5-10":
-            min_id = 1
-            max_id = 53
             rows = (
                 db.query(Animals)
-                .filter(Animals.id >= min_id, Animals.id <= max_id)
+                .filter(Animals.id.between(1, 53))
                 .order_by(Animals.id)
                 .all()
             )
-            start_index = (level - 1) * qcount
-            rows = rows[start_index:start_index + qcount]
+            start = (level - 1) * qcount
+            rows = rows[start:start + qcount]
 
         elif age_slab == "11-15":
             candidate_rows = (
                 db.query(Animals)
-                .filter(Animals.id >= 54, Animals.id <= 198)
+                .filter(Animals.id.between(54, 198))
                 .all()
             )
-            rows = random.sample(candidate_rows, qcount)
+            rows = random.sample(candidate_rows, min(qcount, len(candidate_rows)))
 
         else:
             start_id = (level - 1) * qcount + 1
             end_id = level * qcount
             rows = (
                 db.query(Animals)
-                .filter(Animals.id >= start_id, Animals.id <= end_id)
+                .filter(Animals.id.between(start_id, end_id))
                 .order_by(Animals.id)
                 .all()
             )
 
         questions = []
         for r in rows:
-            img_val = r.image
-            if img_val and not img_val.startswith("/"):
-                final_img = img_val
-            else:
-                final_img = f"https://semantic.onesmarter.com{img_val}" if img_val else None
 
-            if age_slab == "11-15" and not final_img:
-                final_img = "NA"
+            # ✅ PRODUCTION-SAFE IMAGE URL
+            if r.image:
+                final_img = f"{STATIC_BASE_URL}/{r.image.lstrip('/')}"
+            else:
+                final_img = None
 
             questions.append({
                 "id": r.id,
@@ -6030,20 +6028,24 @@ def fetch_questions_for_level(db: Session, level: int, child_id: int = None):
 
     # ------------------ SLOT 2–5 (Funny WhoAmI) -----------------------
     low, high = FUNNY_RANGES[slot]
+
     ids = [
-        row[0]
-        for row in db.query(FunnyWhoami.id)
-        .filter(FunnyWhoami.id >= low, FunnyWhoami.id <= high)
+        r[0]
+        for r in db.query(FunnyWhoami.id)
+        .filter(FunnyWhoami.id.between(low, high))
         .all()
     ]
 
-    chosen = random.sample(ids, qcount)
+    chosen = random.sample(ids, min(qcount, len(ids)))
     rows = db.query(FunnyWhoami).filter(FunnyWhoami.id.in_(chosen)).all()
     idmap = {r.id: r for r in rows}
 
     questions = []
     for cid in chosen:
-        r = idmap[cid]
+        r = idmap.get(cid)
+        if not r:
+            continue
+
         questions.append({
             "id": r.id,
             "question": r.question,
