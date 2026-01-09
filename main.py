@@ -5797,7 +5797,7 @@ class FunnyWhoami(Base):
 
 
 Base.metadata.create_all(bind=engine)
-STATIC_BASE_URL = "https://semantic.onesmarter.com"
+STATIC_BASE_URL = "https://semantic.onesmarter.com/static"
 
 # new logic ithe static folder mount karayache baki hote baki***********************************
 BASE_DIR = Path(__file__).resolve().parent
